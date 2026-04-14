@@ -326,8 +326,8 @@ class Display:
         idx = 0
         for r, g, b in img.getdata():
             pixel = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            buf[idx]     = pixel >> 8
-            buf[idx + 1] = pixel & 0xFF
+            buf[idx]     = pixel & 0xFF   # little-endian
+            buf[idx + 1] = pixel >> 8
             idx += 2
         self._fb.seek(0)
         self._fb.write(buf)
