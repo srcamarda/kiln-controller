@@ -127,32 +127,32 @@ def _render_menu(draw, options, selected):
 
 
 def _render_selecting(draw, curves, selected):
-    """Lista de curvas para seleção."""
+    """Lista de curvas para selecao."""
     _text_center(draw, 6, "SELECIONAR CURVA", _font(17, bold=True), C_TEXT)
     _divider(draw, 30)
 
-    visible = 4  # quantas curvas cabem na tela
+    visible = 3  # 3 curvas por vez para dar mais respiro
     start   = max(0, selected - visible + 1)
     items   = curves[start:start + visible]
 
     for i, curve in enumerate(items):
         idx = start + i
-        y   = 40 + i * 44
+        y   = 42 + i * 62
         if idx == selected:
-            draw.rectangle([8, y - 2, W - 8, y + 34], fill=(40, 40, 80))
-            draw.rectangle([8, y - 2, W - 8, y + 34], outline=C_BLUE)
+            draw.rectangle([6, y - 4, W - 6, y + 50], fill=(40, 40, 80))
+            draw.rectangle([6, y - 4, W - 6, y + 50], outline=C_BLUE)
             name_color = C_TEXT
             info_color = C_BLUE
         else:
             name_color = C_DIM
-            info_color = (70, 70, 90)
+            info_color = (80, 80, 100)
 
-        draw.text((16, y), curve["name"], font=_font(18, bold=(idx == selected)),
+        draw.text((14, y), curve["name"], font=_font(19, bold=(idx == selected)),
                   fill=name_color)
-        segs = len(curve["segments"])
+        segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((16, y + 20), f"{segs} segmentos · {t_max}°C · soak {curve['soak_minutes']}min",
-                  font=_font(13), fill=info_color)
+        draw.text((14, y + 26), f"{segs} segmentos  .  {t_max}C  .  soak {curve['soak_minutes']}min",
+                  font=_font(15), fill=info_color)
 
 
 def _render_confirming(draw, curve_name):
