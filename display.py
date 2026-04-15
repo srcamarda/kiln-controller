@@ -100,7 +100,7 @@ def _render_idle(draw, temp, rtc_time):
 
     # Temperatura
     temp_str = f"{temp:.1f}°C"
-    _text_center(draw, 80, temp_str, _font(50, bold=True), C_ORANGE)
+    _text_center(draw, 80, temp_str, _font(55, bold=True), C_ORANGE)
     _divider(draw, 170)
 
     # Instrução
@@ -230,7 +230,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     draw.text((8, 172), target_rate_str, font=_font(16), fill=C_DIM)
 
     # Tempo decorrido
-    draw.text((W - 135, 158), _fmt_time(elapsed_s), font=_font(20, bold=True, mono=True), fill=C_TEXT)
+    draw.text((W - 110, 158), _fmt_time(elapsed_s), font=_font(20, bold=True, mono=True), fill=C_TEXT)
     _divider(draw, 200)
 
     # Bancos

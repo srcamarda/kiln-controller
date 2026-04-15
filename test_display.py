@@ -50,7 +50,7 @@ with Display() as disp:
         state.bank_a = True
         state.bank_b = False
         state.current_rate = 148.0
-        state.bank_b_suppressed = False
+        state.bank_b_suppressed = True
         state.curve = curves[0]
         disp.show_running(state, curves[0], elapsed_s=4*3600+32*60+10, progress=0.68, measured_temp=847.5)
         time.sleep(DELAY)
