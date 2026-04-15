@@ -95,19 +95,18 @@ def _fmt_time(seconds):
 
 def _render_idle(draw, temp, rtc_time):
     """Tela inicial — temperatura ambiente + horário."""
-    # Horário grande no topo
-    _text_center(draw, 8, rtc_time, _font(28, bold=True, mono=True), C_TEXT)
-    _divider(draw, 44)
+    # Horário no topo
+    _text_center(draw, 12, rtc_time, _font(28, bold=True, mono=True), C_TEXT)
+    _divider(draw, 50)
 
-    # Temperatura em destaque
+    # Temperatura
     temp_str = f"{temp:.1f}°C"
-    _text_center(draw, 55, temp_str, _font(52, bold=True), C_ORANGE)
-
-    _divider(draw, 120)
+    _text_center(draw, 80, temp_str, _font(64, bold=True), C_ORANGE)
+    _divider(draw, 170)
 
     # Instrução
-    _text_center(draw, 130, "FORNO INATIVO", _font(16), C_DIM)
-    _text_center(draw, 155, "Click → Menu", _font(18, bold=True), C_TEXT)
+    _text_center(draw, 185, "FORNO INATIVO", _font(18), C_DIM)
+    _text_center(draw, 210, "Click → Menu", _font(20, bold=True), C_TEXT)
 
 
 def _render_menu(draw, options, selected):
