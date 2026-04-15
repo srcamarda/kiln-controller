@@ -84,7 +84,6 @@ def _divider(draw, y):
     draw.line([(10, y), (W - 10, y)], fill=C_BORDER, width=1)
 
 def _fmt_time(seconds):
-    """Formata segundos em HH:MM:SS."""
     s = int(seconds)
     return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
 
@@ -94,7 +93,7 @@ def _fmt_time(seconds):
 # ──────────────────────────────────────────────
 
 def _render_idle(draw, temp, rtc_time):
-    """Tela inicial — temperatura ambiente + horário."""
+    """Tela inicial"""
     # Horário no topo
     _text_center(draw, 10, rtc_time, _font(28, bold=True, mono=True), C_TEXT)
     _divider(draw, 50)
@@ -110,7 +109,7 @@ def _render_idle(draw, temp, rtc_time):
 
 
 def _render_menu(draw, options, selected):
-    """Menu principal: Curvas / Pré-aquecimento."""
+    """Menu principal"""
     _text_center(draw, 8, "MENU", _font(20, bold=True), C_TEXT)
     _divider(draw, 35)
 
@@ -126,9 +125,9 @@ def _render_menu(draw, options, selected):
 
 
 def _render_selecting(draw, curves, selected):
-    """Lista de curvas para selecao."""
-    _text_center(draw, 6, "SELECIONAR CURVA", _font(17, bold=True), C_TEXT)
-    _divider(draw, 30)
+    """Lista de curvas para seleção"""
+    _text_center(draw, 8, "SELECIONAR CURVA", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
 
     visible = 3  # 3 curvas por vez para dar mais respiro
     start   = max(0, selected - visible + 1)
@@ -136,7 +135,7 @@ def _render_selecting(draw, curves, selected):
 
     for i, curve in enumerate(items):
         idx = start + i
-        y   = 42 + i * 62
+        y   = 50 + i * 62
         if idx == selected:
             draw.rectangle([6, y - 4, W - 6, y + 50], fill=(40, 40, 80))
             draw.rectangle([6, y - 4, W - 6, y + 50], outline=C_BLUE)
@@ -150,12 +149,12 @@ def _render_selecting(draw, curves, selected):
                   fill=name_color)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} subidas - {t_max}C - Patamar {curve['soak_minutes']}min",
+        draw.text((14, y + 26), f"{segs} subidas - {t_max}°C - Patamar {curve['soak_minutes']}min",
                   font=_font(15), fill=info_color)
 
 
 def _render_confirming(draw, curve_name):
-    """Tela de confirmação antes de iniciar."""
+    """Tela de confirmação"""
     _text_center(draw, 20, "INICIAR QUEIMA?", _font(20, bold=True), C_TEXT)
     _divider(draw, 52)
     _text_center(draw, 70, curve_name, _font(22, bold=True), C_ORANGE)
@@ -165,29 +164,29 @@ def _render_confirming(draw, curve_name):
 
 
 def _render_preheat(draw, temp, target, bank_a):
-    """Tela de pré-aquecimento."""
-    _text_center(draw, 6, "PRÉ-AQUECIMENTO", _font(18, bold=True), C_TEXT)
-    _divider(draw, 30)
+    """Tela de pré-aquecimento"""
+    _text_center(draw, 8, "PRÉ-AQUECIMENTO", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
 
     # Temperatura atual
-    draw.text((12, 38), "Atual", font=_font(14), fill=C_DIM)
-    _text_center(draw, 46, f"{temp:.1f}°C", _font(40, bold=True), C_ORANGE)
+    draw.text((12, 55), "Atual", font=_font(14), fill=C_DIM)
+    _text_center(draw, 65, f"{temp:.1f}°C", _font(44, bold=True), C_ORANGE)
 
-    _divider(draw, 100)
+    _divider(draw, 120)
 
-    # Alvo (editável via encoder)
-    draw.text((12, 108), "Alvo", font=_font(14), fill=C_DIM)
-    _text_center(draw, 114, f"{target:.0f}°C", _font(36, bold=True), C_BLUE)
+    # Temperatura alvo
+    draw.text((12, 130), "Alvo", font=_font(14), fill=C_DIM)
+    _text_center(draw, 140, f"{target:.0f}°C", _font(40, bold=True), C_BLUE)
 
-    _divider(draw, 162)
+    _divider(draw, 180)
 
     # Status banco
-    _bank_indicator(draw, 20,  172, "Banco A", bank_a)
-    draw.text((160, 172), "Banco B  ○ bloqueado", font=_font(14), fill=C_DIM)
+    _bank_indicator(draw, 20,  195, "Banco A", bank_a)
+    draw.text((160, 195), "Banco B  ○ desligado", font=_font(14), fill=C_DIM)
 
 
 def _render_running(draw, state, curve, elapsed_s, segment_progress):
-    """Tela principal durante queima (RAMPING)."""
+    """Tela principal durante queima"""
     # Cabeçalho: nome da curva + segmento
     seg_label = f"Seg {state.segment_index + 1}/{len(curve['segments'])}"
     draw.text((8, 6), curve["name"], font=_font(16, bold=True), fill=C_TEXT)
@@ -209,22 +208,22 @@ def _render_running(draw, state, curve, elapsed_s, segment_progress):
     _divider(draw, 126)
 
     # Rate
-    rate_str = f"Rate: {state.current_rate:+.0f}°C/h"
+    rate_str = f"Taxa: {state.current_rate:+.0f}°C/h"
     seg = curve["segments"][state.segment_index]
     target_rate_str = f"(alvo {seg['rate_per_hour']}°C/h)"
     draw.text((8, 132), rate_str, font=_font(14), fill=C_TEXT)
     draw.text((8, 150), target_rate_str, font=_font(12), fill=C_DIM)
 
     # Tempo decorrido
-    draw.text((W - 110, 132), _fmt_time(elapsed_s),
-              font=_font(16, bold=True, mono=True), fill=C_TEXT)
+    draw.text((W - 120, 132), _fmt_time(elapsed_s),
+              font=_font(20, bold=True, mono=True), fill=C_TEXT)
 
     _divider(draw, 172)
 
     # Bancos
-    _bank_indicator(draw, 10, 180, "Banco A", state.bank_a)
+    _bank_indicator(draw, 10, 195, "Banco A", state.bank_a)
     if state.bank_b_suppressed:
-        draw.text((165, 180), "● B suprimido", font=_font(14), fill=C_RED)
+        draw.text((165, 195), "● B desligado", font=_font(14), fill=C_RED)
     else:
         _bank_indicator(draw, 165, 180, "Banco B", state.bank_b)
 
@@ -233,14 +232,13 @@ def _render_running(draw, state, curve, elapsed_s, segment_progress):
 
 
 def _render_running_with_temp(draw, state, curve, elapsed_s, progress, measured_temp):
-    """Versão de _render_running que inclui temperatura medida real."""
     _render_running(draw, state, curve, elapsed_s, progress)
     draw.text((70, 204), f"{measured_temp:.1f}°C",
               font=_font(16, bold=True), fill=C_ORANGE)
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
-    """Tela durante o patamar (soak)."""
+    """Tela durante o patamar"""
     _text_center(draw, 6, "PATAMAR", _font(18, bold=True), C_SOAK)
     _divider(draw, 30)
 
@@ -274,7 +272,7 @@ def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
 
 
 def _render_finished(draw, elapsed_s, max_temp, start_time_str):
-    """Tela de resumo após conclusão."""
+    """Tela de resumo após conclusão"""
     _text_center(draw, 12, "QUEIMA CONCLUÍDA", _font(20, bold=True), C_GREEN)
     _divider(draw, 42)
     draw.text((16, 55),  "Duração:",      font=_font(16), fill=C_DIM)
@@ -288,7 +286,7 @@ def _render_finished(draw, elapsed_s, max_temp, start_time_str):
 
 
 def _render_error(draw, message="Falha no termopar"):
-    """Tela de erro crítico."""
+    """Tela de erro crítico"""
     _text_center(draw, 30,  "⚠  ERRO  ⚠",    _font(24, bold=True), C_RED)
     _divider(draw, 68)
     _text_center(draw, 85,  message,           _font(18), C_TEXT)

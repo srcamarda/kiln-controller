@@ -57,6 +57,7 @@ with Display() as disp:
 
     if screen in (None, "soaking"):
         print("6/8 — SOAKING")
+        state = ControllerState()
         state.mode = ControllerMode.SOAKING
         state.setpoint = 1220.0
         state.bank_a = True
