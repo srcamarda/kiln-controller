@@ -186,29 +186,31 @@ def _render_preheat(draw, temp, target, bank_a):
     draw.text((160, 210), "Banco B  ○ desligado", font=_font(14), fill=C_DIM)
 
 
-def _render_running(draw, state, curve, elapsed_s, segment_progress):
+def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     """Tela principal durante queima"""
     # Cabeçalho: nome da curva + segmento
     seg_label = f"Seg {state.segment_index + 1}/{len(curve['segments'])}"
     draw.text((8, 6), curve["name"], font=_font(16, bold=True), fill=C_TEXT)
+    
     bbox = draw.textbbox((0, 0), seg_label, font=_font(14))
     draw.text((W - bbox[2] - 8, 8), seg_label, font=_font(14), fill=C_DIM)
+
     _divider(draw, 28)
 
-    # Barra de progresso geral
-    _progress_bar(draw, 8, 34, W - 16, 12, segment_progress)
+    # Barra de progresso
+    _progress_bar(draw, 8, 34, W - 16, 12, progress)
 
     # Temperatura atual
-    temp_str = f"{state.setpoint:.0f}°C"  # setpoint
+    temp_str = f"{state.setpoint:.0f}°C"
     draw.text((8, 52), "Alvo", font=_font(13), fill=C_DIM)
     draw.text((50, 48), temp_str, font=_font(22, bold=True), fill=C_BLUE)
 
-    # Temperatura real grande
-    _text_center(draw, 72, f"{state.setpoint:.1f}°C", _font(44, bold=True), C_ORANGE)
+    # Temperatura real
+    _text_center(draw, 72, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)    
 
     _divider(draw, 126)
 
-    # Rate
+    # Informações
     rate_str = f"Taxa: {state.current_rate:+.0f}°C/h"
     seg = curve["segments"][state.segment_index]
     target_rate_str = f"(alvo {seg['rate_per_hour']}°C/h)"
@@ -222,20 +224,11 @@ def _render_running(draw, state, curve, elapsed_s, segment_progress):
     _divider(draw, 172)
 
     # Bancos
-    _bank_indicator(draw, 20, 195, "Banco A", state.bank_a)
+    _bank_indicator(draw, 12, 210, "Banco A", state.bank_a)
     if state.bank_b_suppressed:
-        draw.text((165, 195), "● B desligado", font=_font(14), fill=C_RED)
+        draw.text((165, 210), "● B desligado", font=_font(14), fill=C_RED)
     else:
-        _bank_indicator(draw, 165, 180, "Banco B", state.bank_b)
-
-    # Temperatura medida (linha de baixo)
-    draw.text((8, 204), "Medido:", font=_font(13), fill=C_DIM)
-
-
-def _render_running_with_temp(draw, state, curve, elapsed_s, progress, measured_temp):
-    _render_running(draw, state, curve, elapsed_s, progress)
-    draw.text((70, 204), f"{measured_temp:.1f}°C",
-              font=_font(16, bold=True), fill=C_ORANGE)
+        _bank_indicator(draw, 165, 210, "Banco B", state.bank_b)    
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
@@ -368,7 +361,7 @@ class Display:
     def show_running(self, state, curve: dict, elapsed_s: float,
                      progress: float, measured_temp: float):
         img, draw = self._new_frame()
-        _render_running_with_temp(draw, state, curve, elapsed_s, progress, measured_temp)
+        _render_running(draw, state, curve, elapsed_s, progress, measured_temp)
         self._write(img)
 
     def show_soaking(self, state, elapsed_s: float,
