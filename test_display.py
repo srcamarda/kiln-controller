@@ -23,7 +23,7 @@ with Display() as disp:
 
     if screen in (None, "idle"):
         print("1/8 — IDLE")
-        disp.show_idle(temp=247.3, rtc_time="23:45:10")
+        disp.show_idle(temp=1047.3, rtc_time="23:45:10")
         time.sleep(DELAY)
 
     if screen in (None, "menu"):
@@ -48,7 +48,7 @@ with Display() as disp:
         state.segment_index = 1
         state.setpoint = 851.0
         state.bank_a = True
-        state.bank_b = True
+        state.bank_b = False
         state.current_rate = 148.0
         state.bank_b_suppressed = False
         state.curve = curves[0]
@@ -61,7 +61,7 @@ with Display() as disp:
         state.mode = ControllerMode.SOAKING
         state.setpoint = 1220.0
         state.bank_a = True
-        state.bank_b = False
+        state.bank_b = True
         state.curve  = curves[0]
         disp.show_soaking(state, elapsed_s=5*3600+45*60, remaining_s=18*60, measured_temp=1218.4)
         time.sleep(DELAY)
