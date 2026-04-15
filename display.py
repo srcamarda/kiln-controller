@@ -76,8 +76,8 @@ def _progress_bar(draw, x, y, w, h, pct, color=C_BAR_FG):
 
 def _bank_indicator(draw, x, y, label, active):
     color = C_GREEN if active else C_DIM
-    dot   = "●" if active else "○"
-    f     = _font(16, bold=active)
+    dot = "●" if active else "○"
+    f = _font(16, bold=active)
     draw.text((x, y), f"{dot} {label}", font=f, fill=color)
 
 def _divider(draw, y):
@@ -235,7 +235,10 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
 
     # Bancos
     _bank_indicator(draw, 12, 210, "Banco A", state.bank_a)
-    _bank_indicator(draw, 210, 210, "Banco B", state.bank_b) 
+    if state.bank_b_suppressed:
+        _bank_indicator(draw, 210, 210, "Banco B", False)
+    else:
+        _bank_indicator(draw, 210, 210, "Banco B", state.bank_b) 
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
