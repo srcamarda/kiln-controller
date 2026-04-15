@@ -96,12 +96,12 @@ def _fmt_time(seconds):
 def _render_idle(draw, temp, rtc_time):
     """Tela inicial — temperatura ambiente + horário."""
     # Horário no topo
-    _text_center(draw, 12, rtc_time, _font(28, bold=True, mono=True), C_TEXT)
+    _text_center(draw, 10, rtc_time, _font(28, bold=True, mono=True), C_TEXT)
     _divider(draw, 50)
 
     # Temperatura
     temp_str = f"{temp:.1f}°C"
-    _text_center(draw, 80, temp_str, _font(64, bold=True), C_ORANGE)
+    _text_center(draw, 76, temp_str, _font(64, bold=True), C_ORANGE)
     _divider(draw, 170)
 
     # Instrução
@@ -150,7 +150,7 @@ def _render_selecting(draw, curves, selected):
                   fill=name_color)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} segmentos  .  {t_max}C  .  patamar {curve['soak_minutes']}min",
+        draw.text((14, y + 26), f"{segs} subidas - {t_max}C - Patamar {curve['soak_minutes']}min",
                   font=_font(15), fill=info_color)
 
 

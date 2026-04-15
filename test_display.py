@@ -28,7 +28,7 @@ with Display() as disp:
 
     if screen in (None, "menu"):
         print("2/8 — MENU")
-        disp.show_menu(["Curvas de Queima", "Pré-aquecimento"], selected=0)
+        disp.show_menu(["Curvas de Queima", "Pré-aquecimento", "Adicionar Curva", "Editar Curva"], selected=0)
         time.sleep(DELAY)
 
     if screen in (None, "select"):
