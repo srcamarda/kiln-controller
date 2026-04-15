@@ -17,7 +17,7 @@ CURVES_PATH = os.path.join(os.path.dirname(__file__), "curves.json")
 with open(CURVES_PATH) as f:
     curves = json.load(f)
 
-DELAY = 3  # segundos por tela
+DELAY = 3
 
 with Display() as disp:
 
@@ -38,20 +38,20 @@ with Display() as disp:
 
     if screen in (None, "confirm"):
         print("4/8 — CONFIRMAÇÃO")
-        disp.show_confirming(curves[0]["name"])
+        disp.show_confirming(curves[0])
         time.sleep(DELAY)
 
     if screen in (None, "running"):
         print("5/8 — RUNNING (RAMPING)")
         state = ControllerState()
-        state.mode          = ControllerMode.RAMPING
+        state.mode = ControllerMode.RAMPING
         state.segment_index = 1
-        state.setpoint      = 851.0
-        state.bank_a        = True
-        state.bank_b        = True
-        state.current_rate  = 148.0
+        state.setpoint = 851.0
+        state.bank_a = True
+        state.bank_b = True
+        state.current_rate = 148.0
         state.bank_b_suppressed = False
-        state.curve         = curves[0]
+        state.curve = curves[0]
         disp.show_running(state, curves[0], elapsed_s=4*3600+32*60+10, progress=0.68, measured_temp=847.5)
         time.sleep(DELAY)
 

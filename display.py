@@ -105,7 +105,7 @@ def _render_idle(draw, temp, rtc_time):
 
     # Instrução
     _text_center(draw, 185, "FORNO INATIVO", _font(18), C_DIM)
-    _text_center(draw, 210, "Click → Menu", _font(20, bold=True), C_TEXT)
+    _text_center(draw, 210, "Click → Menu", _font(18), C_TEXT)
 
 
 def _render_menu(draw, options, selected):
@@ -153,13 +153,26 @@ def _render_selecting(draw, curves, selected):
                   font=_font(15), fill=info_color)
 
 
-def _render_confirming(draw, curve_name):
+def _render_confirming(draw, curve):
     """Tela de confirmação"""
     _text_center(draw, 8, "INICIAR QUEIMA?", _font(18, bold=True), C_TEXT)
     _divider(draw, 35)
 
-    _text_center(draw, 70, curve_name, _font(22, bold=True), C_ORANGE)
-    _divider(draw, 108)
+    # Nome da curva
+    _text_center(draw, 30, curve["name"], _font(18, bold=True), C_ORANGE)
+
+    # Segmentos
+    y = 56
+    for i, seg in enumerate(curve["segments"]):
+        label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
+        draw.text((12, y), label, font=_font(14), fill=C_TEXT)
+        y += 22
+
+    # Patamar
+    _divider(draw, y + 2)
+    draw.text((12, y + 8), f"Patamar:  {curve['soak_minutes']} min  na temperatura final", font=_font(14), fill=C_SOAK)
+    
+    _divider(draw, 170)
     _text_center(draw, 185, "Click   →   Confirmar", _font(18), C_GREEN)
     _text_center(draw, 210, "Longo   →   Cancelar",  _font(18), C_DIM)
 
@@ -190,25 +203,25 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     """Tela principal durante queima"""
     # Cabeçalho: nome da curva + segmento
     seg_label = f"Seg {state.segment_index + 1}/{len(curve['segments'])}"
-    draw.text((8, 6), curve["name"], font=_font(16, bold=True), fill=C_TEXT)
+    draw.text((8, 6), curve["name"], font=_font(18, bold=True), fill=C_TEXT)
     
-    bbox = draw.textbbox((0, 0), seg_label, font=_font(14))
-    draw.text((W - bbox[2] - 8, 8), seg_label, font=_font(14), fill=C_DIM)
+    bbox = draw.textbbox((0, 0), seg_label, font=_font(16))
+    draw.text((W - bbox[2] - 8, 8), seg_label, font=_font(16), fill=C_DIM)
 
-    _divider(draw, 28)
+    _divider(draw, 30)
 
     # Barra de progresso
-    _progress_bar(draw, 8, 34, W - 16, 12, progress)
+    _progress_bar(draw, 8, 36, W - 16, 12, progress)
 
-    # Temperatura atual
+    # Temperatura alvo
     temp_str = f"{state.setpoint:.0f}°C"
-    draw.text((8, 52), "Alvo", font=_font(13), fill=C_DIM)
-    draw.text((50, 48), temp_str, font=_font(22, bold=True), fill=C_BLUE)
+    draw.text((8, 60), "Alvo", font=_font(13), fill=C_DIM)
+    draw.text((50, 60), temp_str, font=_font(22, bold=True), fill=C_BLUE)
 
     # Temperatura real
-    _text_center(draw, 72, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)    
+    _text_center(draw, 78, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)    
 
-    _divider(draw, 126)
+    _divider(draw, 132)
 
     # Informações
     rate_str = f"Taxa: {state.current_rate:+.0f}°C/h"
@@ -221,7 +234,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     draw.text((W - 120, 132), _fmt_time(elapsed_s),
               font=_font(20, bold=True, mono=True), fill=C_TEXT)
 
-    _divider(draw, 172)
+    _divider(draw, 195)
 
     # Bancos
     _bank_indicator(draw, 12, 210, "Banco A", state.bank_a)
@@ -233,7 +246,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
     """Tela durante o patamar"""
-    _text_center(draw, 6, "PATAMAR", _font(18, bold=True), C_SOAK)
+    _text_center(draw, 6, "PATAMAR", _font(18, bold=True), C_TEXT)
     _divider(draw, 30)
 
     # Labels acima da temperatura
@@ -254,39 +267,41 @@ def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
     # Barra de progresso do patamar
     total_patamar = state.curve["soak_minutes"] * 60
     soak_pct      = 1.0 - (remaining_s / total_patamar) if total_patamar > 0 else 1.0
-    _progress_bar(draw, 8, 162, W - 16, 12, soak_pct, color=C_SOAK)
+    _progress_bar(draw, 8, 170, W - 16, 12, soak_pct, color=C_SOAK)
 
-    _divider(draw, 182)
+    _divider(draw, 195)
 
     # Decorrido + bancos
-    draw.text((8, 190), f"Total: {_fmt_time(elapsed_s)}",
-              font=_font(13), fill=C_DIM)
-    _bank_indicator(draw, 165, 188, "A", state.bank_a)
-    _bank_indicator(draw, 220, 188, "B", state.bank_b)
+    draw.text((8, 212), f"Total: {_fmt_time(elapsed_s)}",
+              font=_font(16), fill=C_DIM)
+    _bank_indicator(draw, 185, 210, "A", state.bank_a)
+    _bank_indicator(draw, 240, 210, "B", state.bank_b)
 
 
 def _render_finished(draw, elapsed_s, max_temp, start_time_str):
     """Tela de resumo após conclusão"""
-    _text_center(draw, 12, "QUEIMA CONCLUÍDA", _font(20, bold=True), C_GREEN)
-    _divider(draw, 42)
+    _text_center(draw, 10, "QUEIMA CONCLUÍDA", _font(28, bold=True), C_GREEN)
+    _divider(draw, 50)
+
     draw.text((16, 55),  "Duração:",      font=_font(16), fill=C_DIM)
     draw.text((150, 55), _fmt_time(elapsed_s), font=_font(18, bold=True, mono=True), fill=C_TEXT)
     draw.text((16, 85),  "Temp. máx:",    font=_font(16), fill=C_DIM)
     draw.text((150, 85), f"{max_temp:.0f}°C", font=_font(18, bold=True), fill=C_ORANGE)
     draw.text((16, 115), "Início:",       font=_font(16), fill=C_DIM)
     draw.text((150, 115), start_time_str, font=_font(16), fill=C_TEXT)
-    _divider(draw, 148)
-    _text_center(draw, 162, "Click → Menu", _font(18, bold=True), C_TEXT)
+    _divider(draw, 180)
+
+    _text_center(draw, 210, "Click → Menu", _font(18, bold=True), C_TEXT)
 
 
 def _render_error(draw, message="Falha no termopar"):
     """Tela de erro crítico"""
-    _text_center(draw, 30,  "⚠  ERRO  ⚠",    _font(24, bold=True), C_RED)
+    _text_center(draw, 10,  "⚠  ERRO  ⚠",    _font(28, bold=True), C_RED)
     _divider(draw, 68)
     _text_center(draw, 85,  message,           _font(18), C_TEXT)
     _text_center(draw, 118, "Relés desligados", _font(16), C_DIM)
     _divider(draw, 148)
-    _text_center(draw, 162, "Click → Menu",     _font(18, bold=True), C_TEXT)
+    _text_center(draw, 210, "Click → Menu",     _font(18, bold=True), C_TEXT)
 
 
 # ──────────────────────────────────────────────
