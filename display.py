@@ -100,7 +100,7 @@ def _render_idle(draw, temp, rtc_time):
 
     # Temperatura
     temp_str = f"{temp:.1f}°C"
-    _text_center(draw, 76, temp_str, _font(64, bold=True), C_ORANGE)
+    _text_center(draw, 80, temp_str, _font(50, bold=True), C_ORANGE)
     _divider(draw, 170)
 
     # Instrução
@@ -159,10 +159,10 @@ def _render_confirming(draw, curve):
     _divider(draw, 35)
 
     # Nome da curva
-    _text_center(draw, 40, curve["name"], _font(18, bold=True), C_ORANGE)
+    draw.text((12, 42), curve["name"], font=_font(18, bold=True), fill=C_ORANGE)
 
     # Segmentos
-    y = 65
+    y = 68
     for i, seg in enumerate(curve["segments"]):
         label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
         draw.text((12, y), label, font=_font(14), fill=C_TEXT)
@@ -204,33 +204,33 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     """Tela principal durante queima"""
     # Cabeçalho: nome da curva + segmento
     seg_label = f"Seg {state.segment_index + 1}/{len(curve['segments'])}"
-    draw.text((8, 6), curve["name"], font=_font(18, bold=True), fill=C_TEXT)
+    draw.text((8, 5), curve["name"], font=_font(18, bold=True), fill=C_TEXT)
     
     bbox = draw.textbbox((0, 0), seg_label, font=_font(16))
     draw.text((W - bbox[2] - 8, 8), seg_label, font=_font(16), fill=C_DIM)
     _divider(draw, 30)
 
     # Barra de progresso
-    _progress_bar(draw, 8, 36, W - 16, 12, progress)
+    _progress_bar(draw, 8, 38, W - 16, 12, progress)
 
     # Temperatura alvo
     draw.text((8, 60), "Atual", font=_font(16), fill=C_DIM)
-    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(16))
+    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(16, bold=True))
     draw.text((W - bbox[2] - 8, 60), f"Alvo {state.setpoint:.0f}°C", font=_font(16, bold=True), fill=C_BLUE)
     
     # Temperatura real
-    _text_center(draw, 76, f"{measured_temp:.1f}°C", _font(50, bold=True), C_ORANGE)
+    _text_center(draw, 78, f"{measured_temp:.1f}°C", _font(50, bold=True), C_ORANGE)
     _divider(draw, 140)
 
     # Informações
     rate_str = f"Taxa: {state.current_rate:+.0f}°C/h"
     seg = curve["segments"][state.segment_index]
     target_rate_str = f"(alvo {seg['rate_per_hour']}°C/h)"
-    draw.text((8, 150), rate_str, font=_font(14), fill=C_TEXT)
-    draw.text((8, 176), target_rate_str, font=_font(14), fill=C_DIM)
+    draw.text((8, 150), rate_str, font=_font(16), fill=C_TEXT)
+    draw.text((8, 172), target_rate_str, font=_font(16), fill=C_DIM)
 
     # Tempo decorrido
-    draw.text((W - 125, 155), _fmt_time(elapsed_s), font=_font(20, bold=True, mono=True), fill=C_TEXT)
+    draw.text((W - 125, 158), _fmt_time(elapsed_s), font=_font(20, bold=True, mono=True), fill=C_TEXT)
     _divider(draw, 200)
 
     # Bancos
@@ -238,7 +238,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     if state.bank_b_suppressed:
         draw.text((160, 210), "Banco B  ○ desligado", font=_font(14), fill=C_RED)
     else:
-        _bank_indicator(draw, 200, 210, "Banco B", state.bank_b)    
+        _bank_indicator(draw, 210, 210, "Banco B", state.bank_b)    
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
@@ -247,23 +247,23 @@ def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
     _divider(draw, 30)
 
     # Labels acima da temperatura
-    draw.text((8, 34), "Atual", font=_font(14), fill=C_DIM)
-    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(14))
-    draw.text((W - bbox[2] - 8, 34), f"Alvo {state.setpoint:.0f}°C", font=_font(14), fill=C_BLUE)
+    draw.text((8, 36), "Atual", font=_font(14), fill=C_DIM)
+    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(14, bold=True))
+    draw.text((W - bbox[2] - 8, 36), f"Alvo {state.setpoint:.0f}°C", font=_font(14, bold=True), fill=C_BLUE)
 
     # Temperatura grande
-    _text_center(draw, 50, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)
+    _text_center(draw, 54, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)
 
-    _divider(draw, 110)
+    _divider(draw, 112)
 
     # Contagem regressiva
-    draw.text((8, 116), "Tempo restante", font=_font(14), fill=C_DIM)
-    _text_center(draw, 130, _fmt_time(remaining_s), _font(36, bold=True, mono=True), C_SOAK)
+    draw.text((8, 118), "Tempo restante", font=_font(14), fill=C_DIM)
+    _text_center(draw, 134, _fmt_time(remaining_s), _font(36, bold=True, mono=True), C_SOAK)
 
     # Barra de progresso do patamar
     total_patamar = state.curve["soak_minutes"] * 60
     soak_pct = 1.0 - (remaining_s / total_patamar) if total_patamar > 0 else 1.0
-    _progress_bar(draw, 8, 185, W - 16, 12, soak_pct, color=C_SOAK)
+    _progress_bar(draw, 8, 182, W - 16, 12, soak_pct, color=C_SOAK)
     _divider(draw, 200)
 
     # Decorrido + bancos
