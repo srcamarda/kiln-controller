@@ -151,7 +151,7 @@ def _render_selecting(draw, curves, selected):
                   fill=name_color)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} segmentos  .  {t_max}C  .  soak {curve['soak_minutes']}min",
+        draw.text((14, y + 26), f"{segs} segmentos  .  {t_max}C  .  patamar {curve['soak_minutes']}min",
                   font=_font(15), fill=info_color)
 
 
@@ -242,25 +242,27 @@ def _render_running_with_temp(draw, state, curve, elapsed_s, progress, measured_
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
     """Tela durante o patamar (soak)."""
-    _text_center(draw, 6, "PATAMAR  (SOAK)", _font(18, bold=True), C_SOAK)
+    _text_center(draw, 6, "PATAMAR", _font(18, bold=True), C_SOAK)
     _divider(draw, 30)
 
-    # Temperatura
-    _text_center(draw, 38, f"{measured_temp:.1f}°C", _font(46, bold=True), C_ORANGE)
-    draw.text((8, 42), "Atual", font=_font(13), fill=C_DIM)
-    bbox = draw.textbbox((0,0), f"{state.setpoint:.0f}°C", font=_font(13))
-    draw.text((W - bbox[2] - 8, 42), f"Alvo {state.setpoint:.0f}°C",
+    # Labels acima da temperatura
+    draw.text((8, 34), "Atual", font=_font(13), fill=C_DIM)
+    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(13))
+    draw.text((W - bbox[2] - 8, 34), f"Alvo {state.setpoint:.0f}°C",
               font=_font(13), fill=C_BLUE)
 
-    _divider(draw, 96)
+    # Temperatura grande
+    _text_center(draw, 50, f"{measured_temp:.1f}°C", _font(44, bold=True), C_ORANGE)
+
+    _divider(draw, 104)
 
     # Contagem regressiva
-    draw.text((8, 104), "Tempo restante", font=_font(14), fill=C_DIM)
-    _text_center(draw, 116, _fmt_time(remaining_s), _font(36, bold=True, mono=True), C_SOAK)
+    draw.text((8, 112), "Tempo restante", font=_font(14), fill=C_DIM)
+    _text_center(draw, 126, _fmt_time(remaining_s), _font(36, bold=True, mono=True), C_SOAK)
 
-    # Barra de progresso do soak
-    total_soak = state.curve["soak_minutes"] * 60
-    soak_pct   = 1.0 - (remaining_s / total_soak) if total_soak > 0 else 1.0
+    # Barra de progresso do patamar
+    total_patamar = state.curve["soak_minutes"] * 60
+    soak_pct      = 1.0 - (remaining_s / total_patamar) if total_patamar > 0 else 1.0
     _progress_bar(draw, 8, 162, W - 16, 12, soak_pct, color=C_SOAK)
 
     _divider(draw, 182)
