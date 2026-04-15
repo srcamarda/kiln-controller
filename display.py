@@ -170,10 +170,10 @@ def _render_preheat(draw, temp, target, bank_a):
     _divider(draw, 35)
 
     # Temperatura atual
-    draw.text((12, 50), "Atual", font=_font(14), fill=C_DIM)
-    _text_center(draw, 60, f"{temp:.1f}°C", _font(44, bold=True), C_ORANGE)
+    draw.text((12, 48), "Atual", font=_font(14), fill=C_DIM)
+    _text_center(draw, 58, f"{temp:.1f}°C", _font(44, bold=True), C_ORANGE)
 
-    _divider(draw, 120)
+    _divider(draw, 118)
 
     # Temperatura alvo
     draw.text((12, 130), "Alvo", font=_font(14), fill=C_DIM)
@@ -182,7 +182,7 @@ def _render_preheat(draw, temp, target, bank_a):
     _divider(draw, 195)
 
     # Status banco
-    _bank_indicator(draw, 20, 210, "Banco A", bank_a)
+    _bank_indicator(draw, 12, 210, "Banco A", bank_a)
     draw.text((160, 210), "Banco B  ○ desligado", font=_font(14), fill=C_DIM)
 
 
