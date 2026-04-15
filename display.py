@@ -235,10 +235,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
 
     # Bancos
     _bank_indicator(draw, 12, 210, "Banco A", state.bank_a)
-    if state.bank_b_suppressed:
-        draw.text((160, 210), "Banco B  ○ desligado", font=_font(14), fill=C_RED)
-    else:
-        _bank_indicator(draw, 210, 210, "Banco B", state.bank_b)    
+    _bank_indicator(draw, 210, 210, "Banco B", state.bank_b) 
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):

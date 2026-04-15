@@ -48,7 +48,7 @@ with Display() as disp:
         state.segment_index = 1
         state.setpoint = 851.0
         state.bank_a = True
-        state.bank_b = False
+        state.bank_b = True
         state.current_rate = 148.0
         state.bank_b_suppressed = True
         state.curve = curves[0]
