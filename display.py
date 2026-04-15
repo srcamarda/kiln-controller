@@ -155,12 +155,13 @@ def _render_selecting(draw, curves, selected):
 
 def _render_confirming(draw, curve_name):
     """Tela de confirmação"""
-    _text_center(draw, 20, "INICIAR QUEIMA?", _font(20, bold=True), C_TEXT)
-    _divider(draw, 52)
+    _text_center(draw, 8, "INICIAR QUEIMA?", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
     _text_center(draw, 70, curve_name, _font(22, bold=True), C_ORANGE)
     _divider(draw, 108)
-    _text_center(draw, 125, "Click   →   Confirmar", _font(17), C_GREEN)
-    _text_center(draw, 155, "Longo   →   Cancelar",  _font(17), C_DIM)
+    _text_center(draw, 185, "Click   →   Confirmar", _font(18), C_GREEN)
+    _text_center(draw, 210, "Longo   →   Cancelar",  _font(18), C_DIM)
 
 
 def _render_preheat(draw, temp, target, bank_a):
@@ -169,8 +170,8 @@ def _render_preheat(draw, temp, target, bank_a):
     _divider(draw, 35)
 
     # Temperatura atual
-    draw.text((12, 55), "Atual", font=_font(14), fill=C_DIM)
-    _text_center(draw, 65, f"{temp:.1f}°C", _font(44, bold=True), C_ORANGE)
+    draw.text((12, 50), "Atual", font=_font(14), fill=C_DIM)
+    _text_center(draw, 60, f"{temp:.1f}°C", _font(44, bold=True), C_ORANGE)
 
     _divider(draw, 120)
 
@@ -178,11 +179,11 @@ def _render_preheat(draw, temp, target, bank_a):
     draw.text((12, 130), "Alvo", font=_font(14), fill=C_DIM)
     _text_center(draw, 140, f"{target:.0f}°C", _font(40, bold=True), C_BLUE)
 
-    _divider(draw, 180)
+    _divider(draw, 195)
 
     # Status banco
-    _bank_indicator(draw, 20,  195, "Banco A", bank_a)
-    draw.text((160, 195), "Banco B  ○ desligado", font=_font(14), fill=C_DIM)
+    _bank_indicator(draw, 20, 210, "Banco A", bank_a)
+    draw.text((160, 210), "Banco B  ○ desligado", font=_font(14), fill=C_DIM)
 
 
 def _render_running(draw, state, curve, elapsed_s, segment_progress):
@@ -197,7 +198,7 @@ def _render_running(draw, state, curve, elapsed_s, segment_progress):
     # Barra de progresso geral
     _progress_bar(draw, 8, 34, W - 16, 12, segment_progress)
 
-    # Temperatura atual — destaque máximo
+    # Temperatura atual
     temp_str = f"{state.setpoint:.0f}°C"  # setpoint
     draw.text((8, 52), "Alvo", font=_font(13), fill=C_DIM)
     draw.text((50, 48), temp_str, font=_font(22, bold=True), fill=C_BLUE)
@@ -221,7 +222,7 @@ def _render_running(draw, state, curve, elapsed_s, segment_progress):
     _divider(draw, 172)
 
     # Bancos
-    _bank_indicator(draw, 10, 195, "Banco A", state.bank_a)
+    _bank_indicator(draw, 20, 195, "Banco A", state.bank_a)
     if state.bank_b_suppressed:
         draw.text((165, 195), "● B desligado", font=_font(14), fill=C_RED)
     else:

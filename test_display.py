@@ -62,6 +62,7 @@ with Display() as disp:
         state.setpoint = 1220.0
         state.bank_a = True
         state.bank_b = False
+        state.curve  = curves[0]
         disp.show_soaking(state, elapsed_s=5*3600+45*60, remaining_s=18*60, measured_temp=1218.4)
         time.sleep(DELAY)
 
