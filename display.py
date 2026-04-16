@@ -155,16 +155,8 @@ def _render_selecting(draw, curves, selected):
                   fill=name_color)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} subidas - {t_max}°C - Patamar {curve['soak_minutes']}min",
+        draw.text((14, y + 26), f"{segs} Segmentos - {t_max}°C - Patamar {curve['soak_minutes']}min",
                   font=_font(15), fill=info_color)
-        
-    # Ações
-    """
-    _divider(draw, 200)
-    draw.text((12, 210), "Click → Selecionar", font=_font(16, bold=True), fill=C_GREEN)
-    bbox = draw.textbbox((0, 0), "Longo → Voltar", font=_font(16))
-    draw.text((W - bbox[2] - 12, 210), "Longo → Voltar", font=_font(16), fill=C_DIM)
-    """
 
 
 def _render_confirming(draw, curve):
@@ -456,13 +448,6 @@ def _render_curve_list_edit(draw, curves, selected):
                   f"{segs} subidas - {t_max}°C - Patamar {curve['soak_minutes']}min",
                   font=_font(15), fill=info_color)
 
-    # Ações
-    """
-    _divider(draw, 200)
-    draw.text((12, 210), "Click → Selecionar", font=_font(16, bold=True), fill=C_GREEN)
-    bbox = draw.textbbox((0, 0), "Longo → Voltar", font=_font(16))
-    draw.text((W - bbox[2] - 12, 210), "Longo → Voltar", font=_font(16), fill=C_DIM)
-    """
 
 # ──────────────────────────────────────────────
 # Classe principal
