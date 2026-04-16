@@ -114,7 +114,7 @@ def _render_menu(draw, options, selected):
     _divider(draw, 35)
 
     for i, label in enumerate(options):
-        y = 50 + i * 40
+        y = 46 + i * 40
         if i == selected:
             draw.rectangle([8, y - 4, W - 8, y + 28], fill=(40, 40, 80))
             draw.rectangle([8, y - 4, W - 8, y + 28], outline=C_BLUE)
@@ -340,11 +340,11 @@ def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_ne
     draw.rectangle([8, 124, W - 8, 192], fill=tgt_bg)
     if tgt_active:
         draw.rectangle([8, 124, W - 8, 192], outline=C_BLUE)
-    draw.text((16, 129), "Temperatura alvo", font=_font(14), fill=tgt_color)
+    draw.text((16, 129), "Temp. Alvo", font=_font(14), fill=tgt_color)
     tgt_str = f"{target} °C"
     bbox = draw.textbbox((0, 0), tgt_str, font=_font(32, bold=True))
     tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) // 2, 139), tgt_str, font=_font(32, bold=True), fill=tgt_color)
+    draw.text(((W - tw) // 2, 142), tgt_str, font=_font(32, bold=True), fill=tgt_color)
     if tgt_active:
         draw.text((16, 174), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
 
