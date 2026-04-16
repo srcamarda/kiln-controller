@@ -1,14 +1,48 @@
 [
-  {
-    "id": "cone6_fast",
-    "name": "Cone 6 Rapido",
+    {
+    "id": "curva_1",
+    "name": "Biscoito Lento",
     "segments": [
       {
+        "rate_per_hour": 60,
+        "target_temp": 110
+      },
+      {
         "rate_per_hour": 100,
-        "target_temp": 200
+        "target_temp": 600
       },
       {
         "rate_per_hour": 150,
+        "target_temp": 900
+      }
+    ],
+    "soak_minutes": 20
+  },
+  {
+    "id": "curva_2",
+    "name": "Biscoito",
+    "segments": [
+      {
+        "rate_per_hour": 100,
+        "target_temp": 300
+      },
+      {
+        "rate_per_hour": 150,
+        "target_temp": 900
+      }
+    ],
+    "soak_minutes": 15
+  },
+  {
+    "id": "curva_3",
+    "name": "Cone 6 Lento",
+    "segments": [
+      {
+        "rate_per_hour": 60,
+        "target_temp": 600
+      },
+      {
+        "rate_per_hour": 100,
         "target_temp": 1100
       },
       {
@@ -19,41 +53,49 @@
     "soak_minutes": 30
   },
   {
-    "id": "cone10_slow",
-    "name": "Cone 10 Lento",
+    "id": "curva_4",
+    "name": "Cone 6",
     "segments": [
       {
-        "rate_per_hour": 100,
-        "target_temp": 600
+        "rate_per_hour": 90,
+        "target_temp": 120
+      },
+      {
+        "rate_per_hour": 200,
+        "target_temp": 540
+      },
+      {
+        "rate_per_hour": 80,
+        "target_temp": 620
       },
       {
         "rate_per_hour": 150,
-        "target_temp": 1000
+        "target_temp": 1075
       },
       {
-        "rate_per_hour": 100,
-        "target_temp": 1260
+        "rate_per_hour": 50,
+        "target_temp": 1220
       }
     ],
     "soak_minutes": 30
   },
   {
-    "id": "curva_3",
-    "name": "Curva 3",
+    "id": "curva_5",
+    "name": "Cone 6 Rapido",
     "segments": [
       {
-        "rate_per_hour": 100,
-        "target_temp": 500
+        "rate_per_hour": 120,
+        "target_temp": 120
       },
       {
-        "rate_per_hour": 150,
-        "target_temp": 950
+        "rate_per_hour": 300,
+        "target_temp": 1150
       },
       {
-        "rate_per_hour": 50,
-        "target_temp": 1100
+        "rate_per_hour": 60,
+        "target_temp": 1220
       }
     ],
-    "soak_minutes": 25
+    "soak_minutes": 20
   }
 ]
