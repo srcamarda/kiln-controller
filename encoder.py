@@ -34,7 +34,7 @@ except (ImportError, RuntimeError) as e:
     _GPIO_AVAILABLE = False
 
 def _hw_available():
-    if not _GPIO_IMPORTABLE:
+    if not _GPIO_AVAILABLE:
         return False
     # KILN_HW=0 força simulador, KILN_HW=1 força hardware
     kiln_hw = os.environ.get("KILN_HW")
