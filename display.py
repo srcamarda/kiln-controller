@@ -136,8 +136,8 @@ def _render_selecting(draw, curves, selected):
     _divider(draw, 35)
 
     visible = 3  # 3 curvas por vez para dar mais respiro
-    start   = max(0, selected - visible + 1)
-    items   = curves[start:start + visible]
+    start = max(0, selected - visible + 1)
+    items = curves[start:start + visible]
 
     for i, curve in enumerate(items):
         idx = start + i
@@ -151,11 +151,12 @@ def _render_selecting(draw, curves, selected):
             name_color = C_DIM
             info_color = (80, 80, 100)
 
-        draw.text((14, y), curve["name"], font=_font(19, bold=(idx == selected)),
-                  fill=name_color)
+        draw.text((14, y), curve["name"], font=_font(19, bold=(idx == selected)), fill=name_color)
+        est_time = _estimate_curve_time(curve)
+        time_str = _fmt_time(est_time)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} Segmentos - {t_max}°C - Patamar {curve['soak_minutes']}min",
+        draw.text((14, y + 26), f"{segs} Segmentos - {t_max}°C - {time_str}",
                   font=_font(15), fill=info_color)
 
 
@@ -176,6 +177,11 @@ def _render_confirming(draw, curve):
 
     # Patamar
     draw.text((12, y + 2), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
+    
+    # Tempo estimado
+    est_time = _estimate_curve_time(curve)
+    time_str = _fmt_time(est_time)
+    draw.text((12, y), f"Tempo total:  {time_str}", font=_font(16, bold=True), fill=C_BLUE)
     
     # Ações
     _divider(draw, 200)
@@ -440,13 +446,13 @@ def _render_curve_list_edit(draw, curves, selected):
             name_color = C_DIM
             info_color = (80, 80, 100)
 
-        draw.text((14, y), curve["name"],
-                  font=_font(19, bold=(idx == selected)), fill=name_color)
+        draw.text((14, y), curve["name"], font=_font(19, bold=(idx == selected)), fill=name_color)
+        est_time = _estimate_curve_time(curve)
+        time_str = _fmt_time(est_time)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
         draw.text((14, y + 26),
-                  f"{segs} subidas - {t_max}°C - Patamar {curve['soak_minutes']}min",
-                  font=_font(15), fill=info_color)
+                  f"{segs} subidas - {t_max}°C - {time_str}", font=_font(15), fill=info_color)
 
 
 # ──────────────────────────────────────────────
@@ -540,7 +546,6 @@ class Display:
         _render_error(draw, message)
         self._write(img)
 
-
     def show_curve_segment(self, seg_index: int, seg_total: int,
                            field: int, rate: int, target: int, is_new: bool = True):
         img, draw = self._new_frame()
@@ -573,3 +578,22 @@ class Display:
 
     def __exit__(self, *_):
         self.close()
+        
+    def _estimate_curve_time(curve, start_temp=25):
+        """Retorna tempo estimado em segundos."""
+        total_hours = 0.0
+        current_temp = start_temp
+
+        for seg in curve["segments"]:
+            target = seg["target_temp"]
+            rate = seg["rate_per_hour"]
+
+            if rate <= 0:
+                continue
+
+            delta = max(0, target - current_temp)
+            total_hours += delta / rate
+            current_temp = target
+
+        total_hours += curve["soak_minutes"] / 60.0
+        return int(total_hours * 3600)
