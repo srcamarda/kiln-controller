@@ -80,6 +80,7 @@ class HardwareEncoder:
         self._last_state = (GPIO.input(self._clk) << 1) | GPIO.input(self._dt)
         self._acc = 0
         self._direction = 0
+        self._in_cycle = False
         self._last_clk = GPIO.input(self._clk)
         self._sw_pressed = False
         self._press_time = 0.0
@@ -97,23 +98,26 @@ class HardwareEncoder:
         state = (clk << 1) | dt
         last  = self._last_state
 
-        # Detecta início de ciclo (quando sai de 11)
-        if last == 0b11:
+        # Início do ciclo
+        if not self._in_cycle and last == 0b11:
             if state == 0b10:
-                self._direction = +1   # horário
+                self._direction = -1
+                self._in_cycle = True
             elif state == 0b01:
-                self._direction = -1   # anti-horário
+                self._direction = +1
+                self._in_cycle = True
 
-        # Detecta fim de ciclo (quando volta pra 11)
-        elif state == 0b11:
-            if hasattr(self, "_direction"):
-                if self._direction == +1:
-                    self._events.append(EncoderEvent.ROTATE_CW)
-                elif self._direction == -1:
-                    self._events.append(EncoderEvent.ROTATE_CCW)
+        # Fim do ciclo
+        elif self._in_cycle and state == 0b11:
+            if self._direction == +1:
+                self._events.append(EncoderEvent.ROTATE_CW)
+            elif self._direction == -1:
+                self._events.append(EncoderEvent.ROTATE_CCW)
+
+            self._in_cycle = False
             self._direction = 0
 
-        self._last_state = state  
+        self._last_state = state
 
     def _on_button(self, channel):
         state = GPIO.input(self._sw)
