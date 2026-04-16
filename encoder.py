@@ -78,6 +78,7 @@ class HardwareEncoder:
         GPIO.setup(self._sw,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         self._last_state = (GPIO.input(self._clk) << 1) | GPIO.input(self._dt)
+        self._acc = 0
         self._last_clk = GPIO.input(self._clk)
         self._sw_pressed = False
         self._press_time = 0.0
@@ -91,31 +92,32 @@ class HardwareEncoder:
     def _on_rotate(self, channel):
         clk = GPIO.input(self._clk)
         dt  = GPIO.input(self._dt)
-            
+
         state = (clk << 1) | dt
         last  = self._last_state
 
-        # Tabela de transição válida
         transitions = {
-            (0b00, 0b01): +1,
-            (0b01, 0b11): +1,
-            (0b11, 0b10): +1,
-            (0b10, 0b00): +1,
+            (0b01, 0b00): +1,
+            (0b00, 0b10): +1,
+            (0b10, 0b11): +1,
 
-            (0b00, 0b10): -1,
-            (0b10, 0b11): -1,
-            (0b11, 0b01): -1,
-            (0b01, 0b00): -1,
+            (0b10, 0b00): -1,
+            (0b00, 0b01): -1,
+            (0b01, 0b11): -1,
         }
 
         movement = transitions.get((last, state), 0)
+        self._acc += movement
 
-        if movement == +1:
-            self._events.append(EncoderEvent.ROTATE_CW)
-        elif movement == -1:
-            self._events.append(EncoderEvent.ROTATE_CCW)
+        # só gera evento quando fecha ciclo (chega em 11)
+        if state == 0b11:
+            if self._acc > 0:
+                self._events.append(EncoderEvent.ROTATE_CW)
+            elif self._acc < 0:
+                self._events.append(EncoderEvent.ROTATE_CCW)
+            self._acc = 0
 
-        self._last_state = state        
+        self._last_state = state     
 
     def _on_button(self, channel):
         state = GPIO.input(self._sw)
