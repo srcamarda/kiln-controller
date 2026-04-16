@@ -22,7 +22,10 @@ except (ImportError, RuntimeError):
 def _hw_available():
     if not _GPIO_IMPORTABLE:
         return False
-    if os.environ.get("KILN_HW") == "1":
+    kiln_hw = os.environ.get("KILN_HW")
+    if kiln_hw == "0":
+        return False
+    if kiln_hw == "1":
         return True
     if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
         return False

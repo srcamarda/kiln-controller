@@ -133,6 +133,8 @@ class SimulatedEncoder:
     Gera eventos a partir de stdin em modo não-bloqueante.
     Teclas: d = CW, a = CCW, s = click, l = long press
     Útil para testar o main.py sem hardware físico.
+    O modo raw é ativado apenas no primeiro poll() para não
+    bagunçar os prints de inicialização dos outros módulos.
     """
 
     def __init__(self):
@@ -143,10 +145,14 @@ class SimulatedEncoder:
         self._select   = select
         self._fd       = sys.stdin.fileno()
         self._old_settings = termios.tcgetattr(self._fd)
-        tty.setraw(self._fd)
-        print("\r[encoder sim] a=CCW  d=CW  s=click  l=long  q=quit\r")
+        self._raw_active   = False
 
     def poll(self) -> list:
+        if not self._raw_active:
+            self._tty.setraw(self._fd)
+            self._sys.stdout.write("\r\n[encoder sim] a=CCW  d=CW  s=click  l=long  q=quit\r\n")
+            self._sys.stdout.flush()
+            self._raw_active = True
         events = []
         if self._select.select([self._sys.stdin], [], [], 0)[0]:
             ch = self._sys.stdin.read(1)
