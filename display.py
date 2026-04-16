@@ -187,7 +187,7 @@ def _render_confirming(draw, curve):
     # Nome da curva e tempo estimado
     est_time = _estimate_curve_time(curve)
     time_str = _fmt_time(est_time)
-    draw.text((12, 42), f"{curve["name"]} - Tempo: {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
+    draw.text((12, 42), f"{curve["name"]} - {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
 
     # Segmentos
     y = 70
