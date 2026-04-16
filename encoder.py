@@ -176,7 +176,7 @@ class SimulatedEncoder:
 # Factory
 # ──────────────────────────────────────────────
 
-def create_encoder(pin_clk=32, pin_dt=31, pin_sw=29):
+def create_encoder(pin_clk=12, pin_dt=6, pin_sw=5):
     if _HW_AVAILABLE:
         print("\r[encoder] Usando hardware GPIO.")
         return HardwareEncoder(pin_clk, pin_dt, pin_sw)
