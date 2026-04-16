@@ -22,6 +22,7 @@ def _log(msg): print(f"\r{msg}")
 # ──────────────────────────────────────────────
 
 HYSTERESIS      = 5.0    # °C — margem bang-bang (liga abaixo, desliga acima)
+WARMUP_TEMP     = 60.0   # °C — abaixo disso banco A fica sempre ligado (sem bang-bang)
 DUAL_BANK_TEMP  = 600.0  # °C — abaixo disso só banco A
 RATE_TOLERANCE  = 1.20   # 20% acima do rate alvo → desliga banco B
 RATE_WINDOW     = 30.0   # segundos para calcular o rate atual
@@ -216,13 +217,21 @@ class KilnController:
     def _apply_banks(self, temp: float, setpoint: float):
         """
         Decide quais bancos ligar considerando:
+          - Warmup: abaixo de WARMUP_TEMP banco A fica sempre ligado
           - Temperatura atual (abaixo de DUAL_BANK_TEMP → só A)
           - Rate atual vs rate alvo (suprime B se subindo rápido demais)
         """
         s = self.state
 
+        if temp < WARMUP_TEMP:
+            # Fase de aquecimento inicial — banco A sempre ligado, sem bang-bang
+            s.bank_a = True
+            s.bank_b = False
+            s.bank_b_suppressed = False
+            return
+
         if temp < DUAL_BANK_TEMP:
-            # Abaixo de 600°C: só banco A
+            # Abaixo de 600°C: só banco A com bang-bang
             s.bank_b = False
             s.bank_b_suppressed = False
             s.bank_a = self._bangbang(temp, setpoint)
