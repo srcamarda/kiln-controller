@@ -78,10 +78,11 @@ class HardwareEncoder:
         GPIO.setup(self._sw,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         self._last_state = (GPIO.input(self._clk) << 1) | GPIO.input(self._dt)
+        self._last_clk = GPIO.input(self._clk)
         self._acc = 0
         self._direction = 0
         self._in_cycle = False
-        self._last_clk = GPIO.input(self._clk)
+        self._last_event_time = 0
         self._sw_pressed = False
         self._press_time = 0.0
         self._events = []
@@ -109,10 +110,15 @@ class HardwareEncoder:
 
         # Fim do ciclo
         elif self._in_cycle and state == 0b11:
-            if self._direction == +1:
-                self._events.append(EncoderEvent.ROTATE_CW)
-            elif self._direction == -1:
-                self._events.append(EncoderEvent.ROTATE_CCW)
+            now = time.monotonic()
+
+            if now - self._last_event_time > 0.002:  # 2ms
+                if self._direction == +1:
+                    self._events.append(EncoderEvent.ROTATE_CW)
+                elif self._direction == -1:
+                    self._events.append(EncoderEvent.ROTATE_CCW)
+
+                self._last_event_time = now
 
             self._in_cycle = False
             self._direction = 0
