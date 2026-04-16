@@ -77,8 +77,45 @@ with Display() as disp:
         time.sleep(DELAY)
 
     if screen in (None, "error"):
-        print("Extra — ERROR")
+        print("ERROR")
         disp.show_error("Termopar desconectado")
         time.sleep(DELAY)
+
+
+    segs_exemplo = [
+        {"rate_per_hour": 100, "target_temp": 200},
+        {"rate_per_hour": 150, "target_temp": 1100},
+    ]
+
+    if screen in (None, "edit_list"):
+        print("EDITAR: lista de curvas")
+        disp.show_curve_list_edit(curves, selected=0)
+        time.sleep(DELAY)
+
+    if screen in (None, "seg_rate"):
+        print("SEGMENTO: campo rate ativo")
+        disp.show_curve_segment(seg_index=0, seg_total=3, field=0, rate=150, target=1100, is_new=False)
+        time.sleep(DELAY)
+
+    if screen in (None, "seg_target"):
+        print("SEGMENTO: campo target ativo")
+        disp.show_curve_segment(seg_index=0, seg_total=3, field=1, rate=150, target=1100, is_new=True)
+        time.sleep(DELAY)
+
+    if screen in (None, "add_seg"):
+        print("ENTRE SEGMENTOS")
+        disp.show_curve_add_segment(segs_exemplo)
+        time.sleep(DELAY)
+
+    if screen in (None, "curve_soak"):
+        print("PATAMAR")
+        disp.show_curve_soak(minutes=30, is_new=True)
+        time.sleep(DELAY)
+
+    if screen in (None, "curve_save"):
+        print("SALVAR CURVA")
+        disp.show_curve_save("Curva 3", segs_exemplo + [{"rate_per_hour": 60, "target_temp": 1220}], soak_min=30)
+        time.sleep(DELAY)
+
 
 print("Teste concluído.")

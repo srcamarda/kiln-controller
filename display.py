@@ -302,6 +302,148 @@ def _render_error(draw, message="Falha no termopar"):
     _text_center(draw, 210, "Click → Menu", _font(18, bold=True), C_TEXT)
 
 
+
+def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_new):
+    """
+    Edição de um segmento. field: 0 = rate ativo, 1 = target ativo.
+    Layout: campos no centro, comandos no rodapé.
+    """
+    titulo = f"{'NOVO' if is_new else 'EDITAR'} SEGMENTO {seg_index + 1}/{seg_total}"
+    _text_center(draw, 8, titulo, _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
+    # Campo rate
+    rate_active = (field == 0)
+    rate_color  = C_ORANGE if rate_active else C_DIM
+    rate_bg     = (50, 35, 5) if rate_active else (25, 25, 25)
+    draw.rectangle([8, 45, W - 8, 108], fill=rate_bg)
+    if rate_active:
+        draw.rectangle([8, 45, W - 8, 108], outline=C_ORANGE)
+    draw.text((16, 50), "Subida", font=_font(14), fill=rate_color)
+    rate_str = f"{rate} °C/h"
+    bbox = draw.textbbox((0, 0), rate_str, font=_font(32, bold=True))
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) // 2, 62), rate_str, font=_font(32, bold=True), fill=rate_color)
+    if rate_active:
+        draw.text((16, 90), "◄  encoder  ►  (passo 10)", font=_font(13), fill=C_DIM)
+
+    # Campo target
+    tgt_active = (field == 1)
+    tgt_color  = C_BLUE if tgt_active else C_DIM
+    tgt_bg     = (10, 25, 55) if tgt_active else (25, 25, 25)
+    draw.rectangle([8, 116, W - 8, 178], fill=tgt_bg)
+    if tgt_active:
+        draw.rectangle([8, 116, W - 8, 178], outline=C_BLUE)
+    draw.text((16, 120), "Temperatura alvo", font=_font(14), fill=tgt_color)
+    tgt_str = f"{target} °C"
+    bbox = draw.textbbox((0, 0), tgt_str, font=_font(32, bold=True))
+    tw = bbox[2] - bbox[0]
+    draw.text(((W - tw) // 2, 132), tgt_str, font=_font(32, bold=True), fill=tgt_color)
+    if tgt_active:
+        draw.text((16, 160), "◄  encoder  ►  (passo 10)", font=_font(13), fill=C_DIM)
+
+    _divider(draw, 188)
+    draw.text((12, 200), "Click → Confirmar campo", font=_font(16, bold=True), fill=C_GREEN)
+    bbox = draw.textbbox((0, 0), "Longo → Cancelar", font=_font(16))
+    draw.text((W - bbox[2] - 12, 200), "Longo → Cancelar", font=_font(16), fill=C_DIM)
+
+
+def _render_curve_add_segment(draw, segments):
+    """Entre segmentos: resumo do que foi adicionado + opção de continuar ou finalizar."""
+    _text_center(draw, 8, "SEGMENTOS", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
+    # Mostra até 4 segmentos (últimos se houver mais)
+    visible = segments[-4:] if len(segments) > 4 else segments
+    offset  = len(segments) - len(visible)
+    y = 46
+    for i, seg in enumerate(visible):
+        real_i = offset + i
+        is_last = (real_i == len(segments) - 1)
+        col = C_TEXT if is_last else C_DIM
+        draw.text((12, y),  f"{real_i + 1}.", font=_font(16, bold=is_last), fill=col)
+        draw.text((36, y),  f"{seg['rate_per_hour']} °C/h", font=_font(16, bold=is_last), fill=col)
+        draw.text((170, y), f"→  {seg['target_temp']} °C", font=_font(16, bold=is_last), fill=col)
+        y += 34
+
+    _divider(draw, 188)
+    draw.text((12, 200), "Click → + Segmento", font=_font(16, bold=True), fill=C_GREEN)
+    bbox = draw.textbbox((0, 0), "Longo → Patamar", font=_font(16, bold=True))
+    draw.text((W - bbox[2] - 12, 200), "Longo → Patamar", font=_font(16, bold=True), fill=C_BLUE)
+
+
+def _render_curve_soak(draw, minutes, is_new):
+    """Edição do patamar final."""
+    titulo = "NOVA CURVA" if is_new else "EDITAR CURVA"
+    _text_center(draw, 8, titulo, _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
+    _text_center(draw, 55, "PATAMAR FINAL", _font(16), C_DIM)
+    _text_center(draw, 90, f"{minutes} min", _font(52, bold=True), C_SOAK)
+
+    _divider(draw, 170)
+    draw.text((12, 182), "◄  encoder  ►  (passo 5 min)", font=_font(16), fill=C_DIM)
+    draw.text((12, 210), "Click → Confirmar", font=_font(16, bold=True), fill=C_GREEN)
+
+
+def _render_curve_save(draw, curve_name, segments, soak_min):
+    """Confirmação antes de salvar."""
+    _text_center(draw, 8, "SALVAR CURVA?", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
+    draw.text((12, 48),  "Nome:",        font=_font(16), fill=C_DIM)
+    draw.text((100, 46), curve_name,     font=_font(20, bold=True), fill=C_ORANGE)
+
+    y = 80
+    for i, seg in enumerate(segments):
+        draw.text((12, y), f"Seg {i+1}:", font=_font(14), fill=C_DIM)
+        draw.text((80, y), f"{seg['rate_per_hour']} °C/h  →  {seg['target_temp']} °C",
+                  font=_font(14), fill=C_TEXT)
+        y += 22
+
+    draw.text((12, y + 4),   "Patamar:", font=_font(14), fill=C_DIM)
+    draw.text((100, y + 2),  f"{soak_min} min", font=_font(16, bold=True), fill=C_SOAK)
+
+    _divider(draw, 200)
+    draw.text((12, 212), "Click → Salvar", font=_font(16, bold=True), fill=C_GREEN)
+    bbox = draw.textbbox((0, 0), "Longo → Descartar", font=_font(16))
+    draw.text((W - bbox[2] - 12, 212), "Longo → Descartar", font=_font(16), fill=C_DIM)
+
+
+def _render_curve_list_edit(draw, curves, selected):
+    """Seleção de curva para editar."""
+    _text_center(draw, 8, "EDITAR CURVA", _font(18, bold=True), C_TEXT)
+    _divider(draw, 35)
+
+    visible = 3
+    start   = max(0, selected - visible + 1)
+    items   = curves[start:start + visible]
+
+    for i, curve in enumerate(items):
+        idx = start + i
+        y   = 50 + i * 62
+        if idx == selected:
+            draw.rectangle([6, y - 4, W - 6, y + 50], fill=(40, 40, 80))
+            draw.rectangle([6, y - 4, W - 6, y + 50], outline=C_BLUE)
+            name_color = C_TEXT
+            info_color = C_BLUE
+        else:
+            name_color = C_DIM
+            info_color = (80, 80, 100)
+
+        draw.text((14, y), curve["name"],
+                  font=_font(19, bold=(idx == selected)), fill=name_color)
+        segs  = len(curve["segments"])
+        t_max = curve["segments"][-1]["target_temp"]
+        draw.text((14, y + 26),
+                  f"{segs} subidas - {t_max}°C - Patamar {curve['soak_minutes']}min",
+                  font=_font(15), fill=info_color)
+
+    _divider(draw, 200)
+    draw.text((12, 212), "Click → Selecionar", font=_font(16, bold=True), fill=C_GREEN)
+    bbox = draw.textbbox((0, 0), "Longo → Voltar", font=_font(16))
+    draw.text((W - bbox[2] - 12, 212), "Longo → Voltar", font=_font(16), fill=C_DIM)
+
 # ──────────────────────────────────────────────
 # Classe principal
 # ──────────────────────────────────────────────
@@ -391,6 +533,33 @@ class Display:
     def show_error(self, message: str = "Falha no termopar"):
         img, draw = self._new_frame()
         _render_error(draw, message)
+        self._write(img)
+
+
+    def show_curve_segment(self, seg_index: int, seg_total: int,
+                           field: int, rate: int, target: int, is_new: bool = True):
+        img, draw = self._new_frame()
+        _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_new)
+        self._write(img)
+
+    def show_curve_add_segment(self, segments: list):
+        img, draw = self._new_frame()
+        _render_curve_add_segment(draw, segments)
+        self._write(img)
+
+    def show_curve_soak(self, minutes: int, is_new: bool = True):
+        img, draw = self._new_frame()
+        _render_curve_soak(draw, minutes, is_new)
+        self._write(img)
+
+    def show_curve_save(self, curve_name: str, segments: list, soak_min: int):
+        img, draw = self._new_frame()
+        _render_curve_save(draw, curve_name, segments, soak_min)
+        self._write(img)
+
+    def show_curve_list_edit(self, curves: list, selected: int):
+        img, draw = self._new_frame()
+        _render_curve_list_edit(draw, curves, selected)
         self._write(img)
 
     def __enter__(self):
