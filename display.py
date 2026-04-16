@@ -87,6 +87,25 @@ def _fmt_time(seconds):
     s = int(seconds)
     return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
 
+def _estimate_curve_time(curve, start_temp=25):
+    """Retorna tempo estimado em segundos."""
+    total_hours = 0.0
+    current_temp = start_temp
+
+    for seg in curve["segments"]:
+        target = seg["target_temp"]
+        rate = seg["rate_per_hour"]
+
+        if rate <= 0:
+            continue
+
+        delta = max(0, target - current_temp)
+        total_hours += delta / rate
+        current_temp = target
+
+    total_hours += curve["soak_minutes"] / 60.0
+    return int(total_hours * 3600)
+
 
 # ──────────────────────────────────────────────
 # Renderizadores por tela
@@ -578,22 +597,3 @@ class Display:
 
     def __exit__(self, *_):
         self.close()
-        
-    def _estimate_curve_time(curve, start_temp=25):
-        """Retorna tempo estimado em segundos."""
-        total_hours = 0.0
-        current_temp = start_temp
-
-        for seg in curve["segments"]:
-            target = seg["target_temp"]
-            rate = seg["rate_per_hour"]
-
-            if rate <= 0:
-                continue
-
-            delta = max(0, target - current_temp)
-            total_hours += delta / rate
-            current_temp = target
-
-        total_hours += curve["soak_minutes"] / 60.0
-        return int(total_hours * 3600)
