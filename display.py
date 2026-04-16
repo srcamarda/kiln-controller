@@ -197,7 +197,7 @@ def _render_confirming(draw, curve):
         y += 22
 
     # Patamar
-    draw.text((12, y + 2), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
+    draw.text((12, y), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
     
     # Ações
     _divider(draw, 200)
