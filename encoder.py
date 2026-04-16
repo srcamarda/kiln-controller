@@ -21,10 +21,17 @@ import os
 # Tenta importar GPIO no escopo do módulo
 try:
     import RPi.GPIO as GPIO
-    _GPIO_IMPORTABLE = True
-except (ImportError, RuntimeError):
-    _GPIO_IMPORTABLE = False
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        _GPIO_AVAILABLE = True
+    except Exception as e:
+        print(f"[GPIO DEBUG] falha ao inicializar GPIO: {e}")
+        _GPIO_AVAILABLE = False
+except (ImportError, RuntimeError) as e:
+    print(f"[GPIO DEBUG] falha ao importar GPIO: {e}")
     GPIO = None
+    _GPIO_AVAILABLE = False
 
 def _hw_available():
     if not _GPIO_IMPORTABLE:
@@ -112,7 +119,7 @@ class HardwareEncoder:
         elif self._in_cycle and state == 0b11:
             now = time.monotonic()
 
-            if now - self._last_event_time > 0.002:  # 2ms
+            if now - self._last_event_time > 0.003:  # 2ms
                 if self._direction == +1:
                     self._events.append(EncoderEvent.ROTATE_CW)
                 elif self._direction == -1:
