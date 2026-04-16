@@ -327,26 +327,26 @@ def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_ne
     tw = bbox[2] - bbox[0]
     draw.text(((W - tw) // 2, 62), rate_str, font=_font(32, bold=True), fill=rate_color)
     if rate_active:
-        draw.text((16, 94), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
+        draw.text((16, 95), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
 
     # Campo target
     tgt_active = (field == 1)
     tgt_color = C_BLUE if tgt_active else C_DIM
     tgt_bg = (10, 25, 55) if tgt_active else (25, 25, 25)
-    draw.rectangle([8, 116, W - 8, 184], fill=tgt_bg)
+    draw.rectangle([8, 120, W - 8, 188], fill=tgt_bg)
     if tgt_active:
-        draw.rectangle([8, 116, W - 8, 184], outline=C_BLUE)
+        draw.rectangle([8, 120, W - 8, 188], outline=C_BLUE)
     draw.text((16, 120), "Temperatura alvo", font=_font(14), fill=tgt_color)
     tgt_str = f"{target} °C"
     bbox = draw.textbbox((0, 0), tgt_str, font=_font(32, bold=True))
     tw = bbox[2] - bbox[0]
     draw.text(((W - tw) // 2, 132), tgt_str, font=_font(32, bold=True), fill=tgt_color)
     if tgt_active:
-        draw.text((16, 164), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
+        draw.text((16, 169), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
 
     # Ações
     _divider(draw, 200)
-    draw.text((12, 210), "Click → Confirmar", font=_font(16, bold=True), fill=C_GREEN)
+    draw.text((12, 210), "Click → Ok", font=_font(16, bold=True), fill=C_GREEN)
     bbox = draw.textbbox((0, 0), "Longo → Cancelar", font=_font(16))
     draw.text((W - bbox[2] - 12, 210), "Longo → Cancelar", font=_font(16), fill=C_DIM)
 
@@ -389,7 +389,7 @@ def _render_curve_soak(draw, minutes, is_new):
     
     # Ações
     _divider(draw, 200)
-    draw.text((12, 210), "Click → Confirmar", font=_font(16, bold=True), fill=C_GREEN)
+    draw.text((12, 210), "Click → Ok", font=_font(16, bold=True), fill=C_GREEN)
     
 
 def _render_curve_save(draw, curve_name, segments, soak_min):
