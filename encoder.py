@@ -61,8 +61,8 @@ class HardwareEncoder:
 
     def __init__(self, pin_clk, pin_dt, pin_sw):
         self._clk = pin_clk
-        self._dt  = pin_dt
-        self._sw  = pin_sw
+        self._dt = pin_dt
+        self._sw = pin_sw
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
@@ -77,26 +77,45 @@ class HardwareEncoder:
         GPIO.setup(self._dt,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self._sw,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-        self._last_clk    = GPIO.input(self._clk)
-        self._sw_pressed  = False
-        self._press_time  = 0.0
-        self._events      = []
+        self._last_state = (GPIO.input(self._clk) << 1) | GPIO.input(self._dt)
+        self._last_clk = GPIO.input(self._clk)
+        self._sw_pressed = False
+        self._press_time = 0.0
+        self._events = []
 
         # Interrupções
-        GPIO.add_event_detect(self._clk, GPIO.BOTH,
-                              callback=self._on_rotate, bouncetime=10)
-        GPIO.add_event_detect(self._sw,  GPIO.BOTH,
-                              callback=self._on_button, bouncetime=50)
+        GPIO.add_event_detect(self._clk, GPIO.BOTH, callback=self._on_rotate, bouncetime=2)
+        GPIO.add_event_detect(self._dt,  GPIO.BOTH, callback=self._on_rotate, bouncetime=2)
+        GPIO.add_event_detect(self._sw,  GPIO.BOTH, callback=self._on_button, bouncetime=50)
 
     def _on_rotate(self, channel):
-        clk_state = GPIO.input(self._clk)
-        dt_state  = GPIO.input(self._dt)
-        if clk_state != self._last_clk:
-            if dt_state != clk_state:
-                self._events.append(EncoderEvent.ROTATE_CW)
-            else:
-                self._events.append(EncoderEvent.ROTATE_CCW)
-        self._last_clk = clk_state
+        clk = GPIO.input(self._clk)
+        dt  = GPIO.input(self._dt)
+            
+        state = (clk << 1) | dt
+        last  = self._last_state
+
+        # Tabela de transição válida
+        transitions = {
+            (0b00, 0b01): +1,
+            (0b01, 0b11): +1,
+            (0b11, 0b10): +1,
+            (0b10, 0b00): +1,
+
+            (0b00, 0b10): -1,
+            (0b10, 0b11): -1,
+            (0b11, 0b01): -1,
+            (0b01, 0b00): -1,
+        }
+
+        movement = transitions.get((last, state), 0)
+
+        if movement == +1:
+            self._events.append(EncoderEvent.ROTATE_CW)
+        elif movement == -1:
+            self._events.append(EncoderEvent.ROTATE_CCW)
+
+        self._last_state = state        
 
     def _on_button(self, channel):
         state = GPIO.input(self._sw)
