@@ -171,11 +171,11 @@ def _render_confirming(draw, curve):
     y = 70
     for i, seg in enumerate(curve["segments"]):
         label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
-        draw.text((12, y), label, font=_font(14), fill=C_TEXT)
+        draw.text((12, y), label, font=_font(15), fill=C_TEXT)
         y += 22
 
     # Patamar
-    draw.text((12, y + 2), f"Patamar:  {curve['soak_minutes']} min", font=_font(14), fill=C_TEXT)
+    draw.text((12, y + 2), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
     
     # Ações
     _divider(draw, 200)
@@ -333,10 +333,10 @@ def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_ne
     tgt_active = (field == 1)
     tgt_color = C_BLUE if tgt_active else C_DIM
     tgt_bg = (10, 25, 55) if tgt_active else (25, 25, 25)
-    draw.rectangle([8, 120, W - 8, 188], fill=tgt_bg)
+    draw.rectangle([8, 124, W - 8, 192], fill=tgt_bg)
     if tgt_active:
-        draw.rectangle([8, 120, W - 8, 188], outline=C_BLUE)
-    draw.text((16, 120), "Temperatura alvo", font=_font(14), fill=tgt_color)
+        draw.rectangle([8, 124, W - 8, 192], outline=C_BLUE)
+    draw.text((16, 129), "Temperatura alvo", font=_font(14), fill=tgt_color)
     tgt_str = f"{target} °C"
     bbox = draw.textbbox((0, 0), tgt_str, font=_font(32, bold=True))
     tw = bbox[2] - bbox[0]
@@ -404,11 +404,11 @@ def _render_curve_save(draw, curve_name, segments, soak_min):
     y = 70
     for i, seg in enumerate(segments):
         label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
-        draw.text((12, y), label, font=_font(14), fill=C_TEXT)
+        draw.text((12, y), label, font=_font(15), fill=C_TEXT)
         y += 22
 
     # Patamar
-    draw.text((12, y + 2), f"Patamar:  {soak_min} min", font=_font(14), fill=C_TEXT)
+    draw.text((12, y + 2), f"Patamar:  {soak_min} min", font=_font(15), fill=C_TEXT)
 
     # Ações
     _divider(draw, 200)
