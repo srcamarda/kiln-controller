@@ -10,14 +10,16 @@ A lógica é invertida aqui para que True = banco ligado.
 Confirme o comportamento do seu módulo no primeiro teste.
 """
 
+import os
+
 try:
     import RPi.GPIO as GPIO
     _GPIO_IMPORTABLE = True
 except (ImportError, RuntimeError):
     _GPIO_IMPORTABLE = False
+    GPIO = None
 
 def _hw_available():
-    import os
     if not _GPIO_IMPORTABLE:
         return False
     if os.environ.get("KILN_HW") == "1":
