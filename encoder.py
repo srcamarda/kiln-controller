@@ -29,8 +29,11 @@ except (ImportError, RuntimeError):
 def _hw_available():
     if not _GPIO_IMPORTABLE:
         return False
-    # Variável de ambiente KILN_HW=1 força hardware mesmo via SSH
-    if os.environ.get("KILN_HW") == "1":
+    # KILN_HW=0 força simulador, KILN_HW=1 força hardware
+    kiln_hw = os.environ.get("KILN_HW")
+    if kiln_hw == "0":
+        return False
+    if kiln_hw == "1":
         return True
     # Via SSH: usa simulador por padrão
     if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
@@ -62,6 +65,14 @@ class HardwareEncoder:
         self._sw  = pin_sw
 
         GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        # Cleanup preventivo para liberar pinos que possam estar em uso
+        try:
+            GPIO.cleanup(pin_clk)
+            GPIO.cleanup(pin_dt)
+            GPIO.cleanup(pin_sw)
+        except Exception:
+            pass
         GPIO.setup(self._clk, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self._dt,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self._sw,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
