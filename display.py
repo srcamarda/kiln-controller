@@ -122,6 +122,10 @@ def _render_menu(draw, options, selected):
         else:
             color = C_DIM
         _text_center(draw, y, label, _font(20, bold=(i == selected)), color)
+        
+    # Ações
+    _divider(draw, 200)
+    draw.text((12, 210), "Click → Ok", font=_font(16, bold=True), fill=C_GREEN)
 
 
 def _render_selecting(draw, curves, selected):
@@ -179,7 +183,7 @@ def _render_confirming(draw, curve):
     
     # Ações
     _divider(draw, 200)
-    draw.text((12, 210), "Click → Selecionar", font=_font(16, bold=True), fill=C_GREEN)
+    draw.text((12, 210), "Click → Ok", font=_font(16, bold=True), fill=C_GREEN)
     bbox = draw.textbbox((0, 0), "Longo → Cancelar", font=_font(16))
     draw.text((W - bbox[2] - 12, 210), "Longo → Cancelar", font=_font(16), fill=C_DIM)
 
@@ -325,7 +329,7 @@ def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_ne
     rate_str = f"{rate} °C/h"
     bbox = draw.textbbox((0, 0), rate_str, font=_font(32, bold=True))
     tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) // 2, 62), rate_str, font=_font(32, bold=True), fill=rate_color)
+    draw.text(((W - tw) // 2, 60), rate_str, font=_font(32, bold=True), fill=rate_color)
     if rate_active:
         draw.text((16, 95), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
 
@@ -340,9 +344,9 @@ def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_ne
     tgt_str = f"{target} °C"
     bbox = draw.textbbox((0, 0), tgt_str, font=_font(32, bold=True))
     tw = bbox[2] - bbox[0]
-    draw.text(((W - tw) // 2, 132), tgt_str, font=_font(32, bold=True), fill=tgt_color)
+    draw.text(((W - tw) // 2, 139), tgt_str, font=_font(32, bold=True), fill=tgt_color)
     if tgt_active:
-        draw.text((16, 169), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
+        draw.text((16, 174), "◄  Girar  ►  (Avança 10°C)", font=_font(13), fill=C_DIM)
 
     # Ações
     _divider(draw, 200)
