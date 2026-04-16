@@ -365,10 +365,16 @@ class KilnApp:
                     self.edit_rate = max(RATE_MIN,
                         min(RATE_MAX, self.edit_rate + delta * RATE_STEP))
                 else:
-                    # Target deve ser maior que o último segmento
+                    # Target deve ser maior que o segmento anterior
+                    # Em edição, exclui o segmento atual do cálculo
                     min_target = TARGET_MIN
-                    if self.edit_curve["segments"]:
-                        min_target = self.edit_curve["segments"][-1]["target_temp"] + TARGET_STEP
+                    segs = self.edit_curve["segments"]
+                    if self.ui == UIState.CURVE_EDIT_SEG:
+                        prev = segs[:self.edit_seg_idx]
+                    else:
+                        prev = segs
+                    if prev:
+                        min_target = prev[-1]["target_temp"] + TARGET_STEP
                     self.edit_target = max(min_target,
                         min(TARGET_MAX, self.edit_target + delta * TARGET_STEP))
             elif click:
