@@ -63,8 +63,12 @@ class ControllerState:
 
     # Diagnóstico
     setpoint:         float          = 0.0
-    current_rate:     float          = 0.0   # °C/h medido
+    current_rate:     float          = 0.0   # °C/h medido (bruto, usado no controle)
+    display_rate:     float          = 0.0   # °C/h suavizado (só para exibição)
     bank_b_suppressed: bool          = False  # desligado por overshoot
+
+    # Histórico para suavização do rate exibido
+    _rate_history:    list = field(default_factory=list)  # últimas N leituras de rate
 
     # Horário de início da queima (epoch)
     run_start_time:   Optional[float] = None
@@ -251,8 +255,14 @@ class KilnController:
 
     # ── Utilitários ───────────────────────────
 
+    DISPLAY_RATE_SAMPLES = 10  # média móvel de N amostras para exibição
+
     def _update_rate(self, temp: float):
-        """Calcula o rate atual em °C/hora usando janela deslizante."""
+        """
+        Calcula o rate bruto (janela deslizante) e o rate suavizado (média móvel).
+        O rate bruto é usado no controle de bancos.
+        O rate suavizado é usado apenas para exibição no display.
+        """
         now = time.monotonic()
         s   = self.state
         s._temp_history.append((now, temp))
@@ -269,6 +279,12 @@ class KilnController:
                 s.current_rate = (v1 - v0) / dt * 3600.0  # °C/hora
         else:
             s.current_rate = 0.0
+
+        # Suavização para display — média móvel das últimas N leituras
+        s._rate_history.append(s.current_rate)
+        if len(s._rate_history) > self.DISPLAY_RATE_SAMPLES:
+            s._rate_history = s._rate_history[-self.DISPLAY_RATE_SAMPLES:]
+        s.display_rate = sum(s._rate_history) / len(s._rate_history)
 
     def _fault(self):
         s = self.state

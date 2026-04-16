@@ -251,7 +251,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     _divider(draw, 140)
 
     # Informações
-    rate_str = f"Taxa: {state.current_rate:+.0f}°C/h"
+    rate_str = f"Taxa: {state.display_rate:+.0f}°C/h"
     seg = curve["segments"][state.segment_index]
     target_rate_str = f"(alvo {seg['rate_per_hour']}°C/h)"
     draw.text((8, 150), rate_str, font=_font(16), fill=C_TEXT)
