@@ -178,7 +178,7 @@ class SimulatedEncoder:
 
 def create_encoder(pin_clk=17, pin_dt=27, pin_sw=22):
     if _HW_AVAILABLE:
-        print("[encoder] Usando hardware GPIO.")
+        print("\r[encoder] Usando hardware GPIO.")
         return HardwareEncoder(pin_clk, pin_dt, pin_sw)
-    print("[encoder] GPIO não disponível — usando simulador de teclado.")
+    print("\r[encoder] GPIO não disponível — usando simulador de teclado.")
     return SimulatedEncoder()

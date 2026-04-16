@@ -130,7 +130,7 @@ class KilnApp:
 
     def run(self):
         self.display.open()
-        print("[main] Iniciando kiln controller.")
+        print("\r[[main] Iniciando kiln controller.")
         try:
             while True:
                 now = time.monotonic()
@@ -520,7 +520,7 @@ class KilnApp:
     def _save_curve(self):
         err = validate_curve(self.edit_curve)
         if err:
-            print(f"[main] Curva inválida: {err}")
+            print(f"\r[[main] Curva inválida: {err}")
             return
 
         if self.editing_existing:
@@ -533,7 +533,7 @@ class KilnApp:
             self.curves.append(self.edit_curve)
 
         save_curves(self.curves)
-        print(f"[main] Curva '{self.edit_curve['name']}' salva.")
+        print(f"\r[[main] Curva '{self.edit_curve['name']}' salva.")
         self.edit_curve = None
         self.ui = UIState.IDLE
 

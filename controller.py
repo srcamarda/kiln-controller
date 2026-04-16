@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional
 
+def _log(msg): print(f"\r{msg}")
+
 
 # ──────────────────────────────────────────────
 # Configurações
@@ -99,7 +101,7 @@ class KilnController:
         s.soak_start_time    = None
         s.mode               = ControllerMode.RAMPING
         s._temp_history      = []
-        print(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C")
+        _log(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C")
 
     def start_preheat(self, target: float, current_temp: float):
         """Inicia modo pré-aquecimento com alvo fixo."""
@@ -107,7 +109,7 @@ class KilnController:
         self.state.preheat_target = target
         self.state.mode           = ControllerMode.PREHEAT
         self.state.run_start_time = time.time()
-        print(f"[ctrl] Pré-aquecimento → {target:.0f}°C")
+        _log(f"[ctrl] Pré-aquecimento → {target:.0f}°C")
 
     def stop(self):
         """Para tudo e desliga os relés."""
@@ -115,7 +117,7 @@ class KilnController:
         s.mode   = ControllerMode.OFF
         s.bank_a = False
         s.bank_b = False
-        print("[ctrl] Parado.")
+        _log("[ctrl] Parado.")
 
     def set_preheat_target(self, target: float):
         target = max(PREHEAT_MIN, min(PREHEAT_MAX, target))
@@ -179,14 +181,14 @@ class KilnController:
             next_index = s.segment_index + 1
             if next_index < len(s.curve["segments"]):
                 # Avança para o próximo segmento
-                print(f"[ctrl] Segmento {s.segment_index+1} completo → "
+                _log(f"[ctrl] Segmento {s.segment_index+1} completo → "
                       f"segmento {next_index+1}")
                 s.segment_index      = next_index
                 s.segment_start_temp = temp
                 s.segment_start_time = time.monotonic()
             else:
                 # Todos os segmentos concluídos → inicia soak
-                print("[ctrl] Segmentos completos → iniciando soak")
+                _log("[ctrl] Segmentos completos → iniciando soak")
                 s.mode            = ControllerMode.SOAKING
                 s.soak_start_time = time.monotonic()
 
@@ -201,7 +203,7 @@ class KilnController:
         remaining   = s.curve["soak_minutes"] - elapsed_min
 
         if remaining <= 0:
-            print("[ctrl] Soak concluído — finalizando queima.")
+            _log("[ctrl] Soak concluído — finalizando queima.")
             s.mode   = ControllerMode.FINISHED
             s.bank_a = False
             s.bank_b = False
@@ -291,7 +293,7 @@ class KilnController:
         s.mode   = ControllerMode.ERROR
         s.bank_a = False
         s.bank_b = False
-        print("[ctrl] ERRO: falha no termopar — relés desligados.")
+        _log("[ctrl] ERRO: falha no termopar — relés desligados.")
 
     # ── Helpers de consulta ────────────────────
 

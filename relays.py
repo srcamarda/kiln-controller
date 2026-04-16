@@ -112,7 +112,7 @@ class SimulatedRelays:
 
 def create_relays(pin_a=23, pin_b=24):
     if _HW_AVAILABLE:
-        print("[relays] Usando GPIO hardware.")
+        print("\r[[relays] Usando GPIO hardware.")
         return HardwareRelays(pin_a, pin_b)
-    print("[relays] GPIO não disponível — usando simulador.")
+    print("\r[[relays] GPIO não disponível — usando simulador.")
     return SimulatedRelays()

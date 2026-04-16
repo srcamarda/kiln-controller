@@ -103,10 +103,10 @@ def create_sensor():
             sensor = HardwareSensor()
             # Leitura de teste para confirmar comunicação
             _ = sensor.temperature
-            print("[sensor] MAX31855 detectado — usando hardware real.")
+            print("\r[[sensor] MAX31855 detectado — usando hardware real.")
             return sensor
         except Exception as e:
-            print(f"[sensor] Hardware falhou ({e}) — usando simulador.")
+            print(f"\r[[sensor] Hardware falhou ({e}) — usando simulador.")
     else:
-        print("[sensor] Bibliotecas não disponíveis — usando simulador.")
+        print("\r[[sensor] Bibliotecas não disponíveis — usando simulador.")
     return SimulatedSensor()
