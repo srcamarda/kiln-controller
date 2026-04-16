@@ -17,12 +17,14 @@ import time
 from enum import Enum, auto
 
 # Tenta importar RPi.GPIO; se falhar, usa simulador para dev
+"""
 try:
     import RPi.GPIO as GPIO
     _HW_AVAILABLE = True
 except (ImportError, RuntimeError):
     _HW_AVAILABLE = False
-
+"""
+_HW_AVAILABLE = False # Force this for now
 
 LONG_PRESS_MS = 1000  # ms para considerar click longo
 
