@@ -151,11 +151,14 @@ class KilnApp:
 
                 time.sleep(0.02)  # 50Hz de polling do encoder
 
+        except KeyboardInterrupt:
+            pass
         finally:
             self._emergency_stop()
             self.display.close()
             self.encoder.cleanup()
             self.relays.cleanup()
+            print("\r\n[main] Encerrado.")
 
     # ──────────────────────────────────────────────
     # Ciclo de controle
@@ -541,10 +544,10 @@ class KilnApp:
     def _emergency_stop(self):
         self.relays.off()
         self.controller.stop()
-        print("[main] Emergency stop — relés desligados.")
+        print("\r[main] Emergency stop — relés desligados.")
 
     def _shutdown(self, *_):
-        print("[main] Sinal de shutdown recebido.")
+        print("\r[main] Sinal de shutdown recebido.")
         raise KeyboardInterrupt
 
 
