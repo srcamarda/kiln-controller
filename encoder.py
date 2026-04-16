@@ -16,15 +16,30 @@ Eventos gerados:
 import time
 from enum import Enum, auto
 
-# Tenta importar RPi.GPIO; se falhar, usa simulador para dev
-"""
-try:
-    import RPi.GPIO as GPIO
-    _HW_AVAILABLE = True
-except (ImportError, RuntimeError):
-    _HW_AVAILABLE = False
-"""
-_HW_AVAILABLE = False # Force this for now
+# Detecta se GPIO está disponível E se há terminal físico (não SSH sem display)
+def _detect_hw():
+    try:
+        import RPi.GPIO as GPIO
+        # Tenta setup mínimo para confirmar que GPIO não está bloqueado
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        return True
+    except Exception:
+        return False
+
+# Força simulador se rodando via SSH sem display físico conectado
+def _is_interactive_terminal():
+    import os
+    # Se DISPLAY está setado ou SSH_CLIENT presente sem KILN_HW forçado,
+    # usa simulador. Pode ser sobrescrito com variável de ambiente KILN_HW=1
+    if os.environ.get("KILN_HW") == "1":
+        return True
+    if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
+        return False
+    return True
+
+_HW_AVAILABLE = _detect_hw() and _is_interactive_terminal()
+
 
 LONG_PRESS_MS = 1000  # ms para considerar click longo
 

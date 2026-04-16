@@ -12,9 +12,21 @@ Confirme o comportamento do seu módulo no primeiro teste.
 
 try:
     import RPi.GPIO as GPIO
-    _HW_AVAILABLE = True
+    _GPIO_IMPORTABLE = True
 except (ImportError, RuntimeError):
-    _HW_AVAILABLE = False
+    _GPIO_IMPORTABLE = False
+
+def _hw_available():
+    import os
+    if not _GPIO_IMPORTABLE:
+        return False
+    if os.environ.get("KILN_HW") == "1":
+        return True
+    if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
+        return False
+    return True
+
+_HW_AVAILABLE = _hw_available()
 
 
 # ──────────────────────────────────────────────
