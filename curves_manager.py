@@ -34,9 +34,9 @@ def next_curve_name(curves: list) -> str:
 
 def new_curve_template(name: str) -> dict:
     return {
-        "id":           name.lower().replace(" ", "_"),
-        "name":         name,
-        "segments":     [],
+        "id": name.lower().replace(" ", "_"),
+        "name": name,
+        "segments": [],
         "soak_minutes": 30,
     }
 

@@ -175,7 +175,7 @@ def _render_selecting(draw, curves, selected):
         time_str = _fmt_time(est_time)
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
-        draw.text((14, y + 26), f"{segs} Segmentos - {t_max}°C - {time_str}",
+        draw.text((14, y + 26), f"{segs} Segmentos - {t_max}°C - Est: {time_str}",
                   font=_font(15), fill=info_color)
 
 
@@ -184,8 +184,10 @@ def _render_confirming(draw, curve):
     _text_center(draw, 8, "INICIAR QUEIMA?", _font(18, bold=True), C_TEXT)
     _divider(draw, 35)
 
-    # Nome da curva
-    draw.text((12, 42), curve["name"], font=_font(18, bold=True), fill=C_ORANGE)
+    # Nome da curva e tempo estimado
+    est_time = _estimate_curve_time(curve)
+    time_str = _fmt_time(est_time)
+    draw.text((12, 42), f"{curve["name"]} - Tempo: {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
 
     # Segmentos
     y = 70
@@ -196,11 +198,6 @@ def _render_confirming(draw, curve):
 
     # Patamar
     draw.text((12, y + 2), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
-    
-    # Tempo estimado
-    est_time = _estimate_curve_time(curve)
-    time_str = _fmt_time(est_time)
-    draw.text((12, y), f"Tempo total:  {time_str}", font=_font(16, bold=True), fill=C_BLUE)
     
     # Ações
     _divider(draw, 200)
@@ -471,7 +468,7 @@ def _render_curve_list_edit(draw, curves, selected):
         segs  = len(curve["segments"])
         t_max = curve["segments"][-1]["target_temp"]
         draw.text((14, y + 26),
-                  f"{segs} subidas - {t_max}°C - {time_str}", font=_font(15), fill=info_color)
+                  f"{segs} subidas - {t_max}°C - Est: {time_str}", font=_font(15), fill=info_color)
 
 
 # ──────────────────────────────────────────────
