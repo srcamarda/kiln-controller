@@ -2,9 +2,9 @@
 encoder.py — Leitura do encoder rotativo com botão via GPIO.
 
 Pinagem padrão (ajustável via argumentos):
-  CLK → GPIO17  (pino físico 11)
-  DT  → GPIO27  (pino físico 13)
-  SW  → GPIO22  (pino físico 15)
+  SW  → GPIO5  (pino físico 29)
+  DT  → GPIO6  (pino físico 31)
+  CLK → GPIO12 (pino físico 32)
 
 Eventos gerados:
   ROTATE_CW   — girou para direita (+1)
@@ -59,7 +59,7 @@ class EncoderEvent(Enum):
 
 class HardwareEncoder:
 
-    def __init__(self, pin_clk=17, pin_dt=27, pin_sw=22):
+    def __init__(self, pin_clk, pin_dt, pin_sw):
         self._clk = pin_clk
         self._dt  = pin_dt
         self._sw  = pin_sw
@@ -176,7 +176,7 @@ class SimulatedEncoder:
 # Factory
 # ──────────────────────────────────────────────
 
-def create_encoder(pin_clk=17, pin_dt=27, pin_sw=22):
+def create_encoder(pin_clk=32, pin_dt=31, pin_sw=29):
     if _HW_AVAILABLE:
         print("\r[encoder] Usando hardware GPIO.")
         return HardwareEncoder(pin_clk, pin_dt, pin_sw)
