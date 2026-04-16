@@ -84,7 +84,7 @@ class HardwareEncoder:
 
         # Interrupções
         GPIO.add_event_detect(self._clk, GPIO.BOTH,
-                              callback=self._on_rotate, bouncetime=2)
+                              callback=self._on_rotate, bouncetime=10)
         GPIO.add_event_detect(self._sw,  GPIO.BOTH,
                               callback=self._on_button, bouncetime=50)
 
