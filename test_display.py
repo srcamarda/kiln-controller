@@ -22,27 +22,27 @@ DELAY = 3
 with Display() as disp:
 
     if screen in (None, "idle"):
-        print("1/8 — IDLE")
+        print("IDLE")
         disp.show_idle(temp=1047.3, rtc_time="23:45:10")
         time.sleep(DELAY)
 
     if screen in (None, "menu"):
-        print("2/8 — MENU")
+        print("MENU")
         disp.show_menu(["Curvas de Queima", "Pré-aquecimento", "Adicionar Curva", "Editar Curva"], selected=0)
         time.sleep(DELAY)
 
     if screen in (None, "select"):
-        print("3/8 — SELEÇÃO DE CURVA")
+        print("SELEÇÃO DE CURVA")
         disp.show_selecting(curves, selected=0)
         time.sleep(DELAY)
 
     if screen in (None, "confirm"):
-        print("4/8 — CONFIRMAÇÃO")
+        print("CONFIRMAÇÃO")
         disp.show_confirming(curves[0])
         time.sleep(DELAY)
 
     if screen in (None, "running"):
-        print("5/8 — RUNNING (RAMPING)")
+        print("RUNNING")
         state = ControllerState()
         state.mode = ControllerMode.RAMPING
         state.segment_index = 1
@@ -50,13 +50,13 @@ with Display() as disp:
         state.bank_a = True
         state.bank_b = True
         state.current_rate = 148.0
-        state.bank_b_suppressed = True
+        state.bank_b_suppressed = False
         state.curve = curves[0]
         disp.show_running(state, curves[0], elapsed_s=4*3600+32*60+10, progress=0.68, measured_temp=847.5)
         time.sleep(DELAY)
 
     if screen in (None, "soaking"):
-        print("6/8 — SOAKING")
+        print("SOAKING")
         state = ControllerState()
         state.mode = ControllerMode.SOAKING
         state.setpoint = 1220.0
@@ -67,12 +67,12 @@ with Display() as disp:
         time.sleep(DELAY)
 
     if screen in (None, "preheat"):
-        print("7/8 — PRÉ-AQUECIMENTO")
+        print("PRÉ-AQUECIMENTO")
         disp.show_preheat(temp=187.0, target=350.0, bank_a=True)
         time.sleep(DELAY)
 
     if screen in (None, "finished"):
-        print("8/8 — FINISHED")
+        print("FINISHED")
         disp.show_finished(elapsed_s=6*3600+32*60+45, max_temp=1223.0, start_time_str="19:12")
         time.sleep(DELAY)
 
