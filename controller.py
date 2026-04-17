@@ -25,7 +25,7 @@ HYSTERESIS      = 8.0    # °C — margem bang-bang (liga abaixo, desliga acima)
 WARMUP_TEMP     = 60.0   # °C — abaixo disso banco A fica sempre ligado (sem bang-bang)
 DUAL_BANK_TEMP  = 600.0  # °C — abaixo disso só banco A
 RATE_TOLERANCE  = 1.20   # 20% acima do rate alvo → desliga banco B
-RATE_WINDOW     = 30.0   # segundos para calcular o rate atual
+RATE_WINDOW     = 300.0  # segundos para calcular o rate atual
 PREHEAT_MIN     = 100    # °C — mínimo do modo pré-aquecimento
 PREHEAT_MAX     = 600    # °C — máximo do modo pré-aquecimento
 PREHEAT_STEP    = 10     # °C — passo do encoder no pré-aquecimento
@@ -266,7 +266,7 @@ class KilnController:
 
     # ── Utilitários ───────────────────────────
 
-    DISPLAY_RATE_SAMPLES = 10  # média móvel de N amostras para exibição
+    DISPLAY_RATE_SAMPLES = 30  # média móvel de N amostras para exibição
 
     def _update_rate(self, temp: float):
         """

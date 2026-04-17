@@ -584,7 +584,7 @@ class KilnApp:
             self.curves.append(self.edit_curve)
 
         save_curves(self.curves)
-        print(f"\r[[main] Curva '{self.edit_curve['name']}' salva.")
+        print(f"\r[main] Curva '{self.edit_curve['name']}' salva.")
         self.edit_curve = None
         self.ui = UIState.IDLE
 
