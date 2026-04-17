@@ -90,10 +90,13 @@ class HardwareEncoder:
     def _on_button_release(self):
         if self._sw_pressed:
             held_ms = (time.monotonic() - self._press_time) * 1000
-            if held_ms >= LONG_PRESS_MS:
-                self._events.append(EncoderEvent.LONG_PRESS)
-            else:
-                self._events.append(EncoderEvent.CLICK)
+            
+            with self._lock:
+                if held_ms >= LONG_PRESS_MS:
+                    self._events.append(EncoderEvent.LONG_PRESS)
+                else:
+                    self._events.append(EncoderEvent.CLICK)
+                    
         self._sw_pressed = False
 
     def poll(self) -> list:
