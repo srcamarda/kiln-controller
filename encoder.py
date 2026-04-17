@@ -1,4 +1,3 @@
-```python
 """
 encoder.py — Leitura do encoder rotativo com botão via GPIO.
 
