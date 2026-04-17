@@ -115,13 +115,21 @@ class HardwareEncoder:
             with self._lock:
                 self._acc += move
 
-                # em vez de resetar sempre, consome apenas o necessário
-                if self._acc >= 4:
+                STEP = 3
+
+                # Dispara evento
+                if self._acc >= STEP:
                     self._events.append(EncoderEvent.ROTATE_CW)
-                    self._acc -= 4
-                elif self._acc <= -4:
+                    self._acc -= STEP
+                elif self._acc <= -STEP:
                     self._events.append(EncoderEvent.ROTATE_CCW)
-                    self._acc += 4
+                    self._acc += STEP
+
+                # Clamp (evita acúmulo estranho por ruído)
+                if self._acc > STEP:
+                    self._acc = STEP
+                elif self._acc < -STEP:
+                    self._acc = -STEP
 
         self._last_state = state
 
