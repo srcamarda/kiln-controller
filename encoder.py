@@ -57,8 +57,8 @@ class EncoderEvent(Enum):
 class HardwareEncoder:
 
     def __init__(self, pin_clk, pin_dt, pin_sw):
-        self._clk = Button(pin_clk, pull_up=True, bounce_time=0.002)
-        self._dt  = Button(pin_dt,  pull_up=True, bounce_time=0.002)
+        self._clk = Button(pin_clk, pull_up=True, bounce_time=None)
+        self._dt  = Button(pin_dt,  pull_up=True, bounce_time=None)
         self._sw  = Button(pin_sw,  pull_up=True, bounce_time=0.05)
 
         self._last_state = (int(self._clk.value) << 1) | int(self._dt.value)
@@ -89,6 +89,7 @@ class HardwareEncoder:
     def _on_rotate(self):
         state = self._read_state()
         last  = self._last_state
+        print(f"STATE: {state:02b}") # debug
 
         # Início do ciclo
         if not self._in_cycle and last == 0b11:
