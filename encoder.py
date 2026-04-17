@@ -19,12 +19,12 @@ import os
 
 # GPIO via gpiozero (backend automático: lgpio, etc.)
 try:
-    from gpiozero import Button
+    from gpiozero import RotaryEncoder, Button
     _GPIO_AVAILABLE = True
 except Exception:
     _GPIO_AVAILABLE = False
     Button = None
-
+    RotaryEncoder = None
 
 def _hw_available():
     if not _GPIO_AVAILABLE:
@@ -49,17 +49,6 @@ class EncoderEvent(Enum):
     CLICK      = auto()
     LONG_PRESS = auto()
 
-_TRANSITIONS = {
-    (0b00, 0b01): -1,
-    (0b01, 0b11): -1,
-    (0b11, 0b10): -1,
-    (0b10, 0b00): -1,
-
-    (0b00, 0b10): +1,
-    (0b10, 0b11): +1,
-    (0b11, 0b01): +1,
-    (0b01, 0b00): +1,
-}
 
 # ──────────────────────────────────────────────
 # Hardware real
@@ -70,60 +59,29 @@ class HardwareEncoder:
     def __init__(self, pin_clk, pin_dt, pin_sw):
         import threading
         self._lock = threading.Lock()
-        self._ready = True
-        
-        self._clk = Button(pin_clk, pull_up=True, bounce_time=None)
-        self._dt  = Button(pin_dt,  pull_up=True, bounce_time=None)
-        self._sw  = Button(pin_sw,  pull_up=True, bounce_time=0.05)
+        self._events = []        
 
-        self._last_state = (int(self._clk.value) << 1) | int(self._dt.value)
-        self._direction = 0
-        self._in_cycle = False
-        self._last_event_time = 0
-        self._acc = 0
+        self._encoder = RotaryEncoder(pin_clk, pin_dt, max_steps=0, wrap=False)
+        self._sw = Button(pin_sw, pull_up=True, bounce_time=0.05)
         
-        self._last_clk = int(self._clk.value)
-        self._last_event_time = 0
-
         self._sw_pressed = False
         self._press_time = 0.0
 
-        self._events = []
+        # Callbacks do encoder
+        self._encoder.when_rotated_clockwise = self._on_rotate_cw
+        self._encoder.when_rotated_counter_clockwise = self._on_rotate_ccw
 
-        # Callbacks de rotação
-        self._clk.when_pressed  = self._on_rotate
-        self._clk.when_released = self._on_rotate
-        self._dt.when_pressed   = self._on_rotate
-        self._dt.when_released  = self._on_rotate
+        # Callbacks do botão
+        self._sw.when_pressed = self._on_button_press
+        self._sw.when_released = self._on_button_release
 
-        # Botão
-        self._sw.when_pressed   = self._on_button_press
-        self._sw.when_released  = self._on_button_release
+    def _on_rotate_cw(self):
+        with self._lock:
+            self._events.append(EncoderEvent.ROTATE_CW)
 
-    def _read_state(self):
-        clk = int(self._clk.value)
-        dt  = int(self._dt.value)
-        return (clk << 1) | dt
-
-    def _on_rotate(self):
-        state = self._read_state()
-        last  = self._last_state
-
-        move = _TRANSITIONS.get((last, state), 0)
-
-        if move != 0:
-                    with self._lock:
-                        self._acc += move
-
-                        # Reduzido de 4 para 2 para compensar estados perdidos
-                        if self._acc >= 2:
-                            self._events.append(EncoderEvent.ROTATE_CW)
-                            self._acc = 0   # Zera para evitar dessincronização
-                        elif self._acc <= -2:
-                            self._events.append(EncoderEvent.ROTATE_CCW)
-                            self._acc = 0   # Zera para evitar dessincronização
-
-        self._last_state = state
+    def _on_rotate_ccw(self):
+        with self._lock:
+            self._events.append(EncoderEvent.ROTATE_CCW)
 
     def _on_button_press(self):
         self._sw_pressed = True
