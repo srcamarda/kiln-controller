@@ -241,10 +241,14 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     # Barra de progresso
     _progress_bar(draw, 8, 38, W - 16, 12, progress)
 
-    # Temperatura alvo
+    # Obtém o segmento atual para exibir o alvo final
+    seg = curve["segments"][state.segment_index]
+    target_temp = seg["target_temp"]
+
+    # Temperatura alvo fixa do segmento atual
     draw.text((8, 60), "Atual", font=_font(16), fill=C_DIM)
-    bbox = draw.textbbox((0, 0), f"Alvo {state.setpoint:.0f}°C", font=_font(16, bold=True))
-    draw.text((W - bbox[2] - 8, 60), f"Alvo {state.setpoint:.0f}°C", font=_font(16, bold=True), fill=C_BLUE)
+    bbox = draw.textbbox((0, 0), f"Alvo {target_temp:.0f}°C", font=_font(16, bold=True))
+    draw.text((W - bbox[2] - 8, 60), f"Alvo {target_temp:.0f}°C", font=_font(16, bold=True), fill=C_BLUE)
     
     # Temperatura real
     _text_center(draw, 78, f"{measured_temp:.1f}°C", _font(50, bold=True), C_ORANGE)
@@ -252,7 +256,6 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
 
     # Informações
     rate_str = f"Taxa: {state.display_rate:+.0f}°C/h"
-    seg = curve["segments"][state.segment_index]
     target_rate_str = f"(alvo {seg['rate_per_hour']}°C/h)"
     draw.text((8, 150), rate_str, font=_font(16), fill=C_TEXT)
     draw.text((8, 172), target_rate_str, font=_font(16), fill=C_DIM)
@@ -266,7 +269,7 @@ def _render_running(draw, state, curve, elapsed_s, progress, measured_temp):
     if state.bank_b_suppressed:
         _bank_indicator(draw, 210, 210, "Banco B", False)
     else:
-        _bank_indicator(draw, 210, 210, "Banco B", state.bank_b) 
+        _bank_indicator(draw, 210, 210, "Banco B", state.bank_b)
 
 
 def _render_soaking(draw, state, elapsed_s, remaining_s, measured_temp):
