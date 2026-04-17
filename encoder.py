@@ -1,3 +1,4 @@
+```python
 """
 encoder.py — Leitura do encoder rotativo com botão via GPIO.
 
@@ -15,37 +16,27 @@ Eventos gerados:
 
 import time
 from enum import Enum, auto
-
 import os
 
-# Tenta importar GPIO no escopo do módulo
+# GPIO via gpiozero (backend automático: lgpio, etc.)
 try:
-    import RPi.GPIO as GPIO
-    try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        _GPIO_AVAILABLE = True
-    except Exception as e:
-        print(f"[GPIO DEBUG] falha ao inicializar GPIO: {e}")
-        _GPIO_AVAILABLE = False
-except (ImportError, RuntimeError) as e:
-    print(f"[GPIO DEBUG] falha ao importar GPIO: {e}")
-    GPIO = None
+    from gpiozero import Button
+    _GPIO_AVAILABLE = True
+except Exception:
     _GPIO_AVAILABLE = False
+    Button = None
+
 
 def _hw_available():
     if not _GPIO_AVAILABLE:
         return False
-    # KILN_HW=0 força simulador, KILN_HW=1 força hardware
     kiln_hw = os.environ.get("KILN_HW")
     if kiln_hw == "0":
         return False
     if kiln_hw == "1":
         return True
-    # Via SSH: usa simulador por padrão
-    if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
-        return False
     return True
+
 
 _HW_AVAILABLE = _hw_available()
 
@@ -67,43 +58,37 @@ class EncoderEvent(Enum):
 class HardwareEncoder:
 
     def __init__(self, pin_clk, pin_dt, pin_sw):
-        self._clk = pin_clk
-        self._dt = pin_dt
-        self._sw = pin_sw
+        self._clk = Button(pin_clk, pull_up=True, bounce_time=0.002)
+        self._dt  = Button(pin_dt,  pull_up=True, bounce_time=0.002)
+        self._sw  = Button(pin_sw,  pull_up=True, bounce_time=0.05)
 
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        # Cleanup preventivo para liberar pinos que possam estar em uso
-        try:
-            GPIO.cleanup(pin_clk)
-            GPIO.cleanup(pin_dt)
-            GPIO.cleanup(pin_sw)
-        except Exception:
-            pass
-        GPIO.setup(self._clk, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(self._dt,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(self._sw,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-        self._last_state = (GPIO.input(self._clk) << 1) | GPIO.input(self._dt)
-        self._last_clk = GPIO.input(self._clk)
-        self._acc = 0
+        self._last_state = (int(self._clk.value) << 1) | int(self._dt.value)
         self._direction = 0
         self._in_cycle = False
         self._last_event_time = 0
+
         self._sw_pressed = False
         self._press_time = 0.0
+
         self._events = []
 
-        # Interrupções
-        GPIO.add_event_detect(self._clk, GPIO.BOTH, callback=self._on_rotate, bouncetime=2)
-        GPIO.add_event_detect(self._dt,  GPIO.BOTH, callback=self._on_rotate, bouncetime=2)
-        GPIO.add_event_detect(self._sw,  GPIO.BOTH, callback=self._on_button, bouncetime=50)
+        # Callbacks de rotação
+        self._clk.when_pressed  = self._on_rotate
+        self._clk.when_released = self._on_rotate
+        self._dt.when_pressed   = self._on_rotate
+        self._dt.when_released  = self._on_rotate
 
-    def _on_rotate(self, channel):
-        clk = GPIO.input(self._clk)
-        dt  = GPIO.input(self._dt)
+        # Botão
+        self._sw.when_pressed   = self._on_button_press
+        self._sw.when_released  = self._on_button_release
 
-        state = (clk << 1) | dt
+    def _read_state(self):
+        clk = int(self._clk.value)
+        dt  = int(self._dt.value)
+        return (clk << 1) | dt
+
+    def _on_rotate(self):
+        state = self._read_state()
         last  = self._last_state
 
         # Início do ciclo
@@ -119,7 +104,7 @@ class HardwareEncoder:
         elif self._in_cycle and state == 0b11:
             now = time.monotonic()
 
-            if now - self._last_event_time > 0.003:  # 2ms
+            if now - self._last_event_time > 0.003:
                 if self._direction == +1:
                     self._events.append(EncoderEvent.ROTATE_CW)
                 elif self._direction == -1:
@@ -132,43 +117,36 @@ class HardwareEncoder:
 
         self._last_state = state
 
-    def _on_button(self, channel):
-        state = GPIO.input(self._sw)
-        if state == GPIO.LOW:
-            # Pressionou
-            self._sw_pressed = True
-            self._press_time = time.monotonic()
-        else:
-            # Soltou
-            if self._sw_pressed:
-                held_ms = (time.monotonic() - self._press_time) * 1000
-                if held_ms >= LONG_PRESS_MS:
-                    self._events.append(EncoderEvent.LONG_PRESS)
-                else:
-                    self._events.append(EncoderEvent.CLICK)
-            self._sw_pressed = False
+    def _on_button_press(self):
+        self._sw_pressed = True
+        self._press_time = time.monotonic()
+
+    def _on_button_release(self):
+        if self._sw_pressed:
+            held_ms = (time.monotonic() - self._press_time) * 1000
+            if held_ms >= LONG_PRESS_MS:
+                self._events.append(EncoderEvent.LONG_PRESS)
+            else:
+                self._events.append(EncoderEvent.CLICK)
+        self._sw_pressed = False
 
     def poll(self) -> list:
-        """Retorna e limpa a lista de eventos pendentes."""
         events = self._events[:]
         self._events.clear()
         return events
 
     def cleanup(self):
-        GPIO.cleanup()
+        pass
 
 
 # ──────────────────────────────────────────────
-# Simulador para desenvolvimento via SSH
+# Simulador
 # ──────────────────────────────────────────────
 
 class SimulatedEncoder:
     """
     Gera eventos a partir de stdin em modo não-bloqueante.
     Teclas: d = CW, a = CCW, s = click, l = long press
-    Útil para testar o main.py sem hardware físico.
-    O modo raw é ativado apenas no primeiro poll() para não
-    bagunçar os prints de inicialização dos outros módulos.
     """
 
     def __init__(self):
@@ -187,9 +165,12 @@ class SimulatedEncoder:
             self._sys.stdout.write("\r\n[encoder sim] a=CCW  d=CW  s=click  l=long  q=quit\r\n")
             self._sys.stdout.flush()
             self._raw_active = True
+
         events = []
+
         if self._select.select([self._sys.stdin], [], [], 0)[0]:
             ch = self._sys.stdin.read(1)
+
             if ch == 'd':
                 events.append(EncoderEvent.ROTATE_CW)
             elif ch == 'a':
@@ -200,6 +181,7 @@ class SimulatedEncoder:
                 events.append(EncoderEvent.LONG_PRESS)
             elif ch == 'q':
                 raise KeyboardInterrupt
+
         return events
 
     def cleanup(self):
@@ -214,5 +196,6 @@ def create_encoder(pin_clk=12, pin_dt=6, pin_sw=5):
     if _HW_AVAILABLE:
         print("\r[encoder] Usando hardware GPIO.")
         return HardwareEncoder(pin_clk, pin_dt, pin_sw)
+
     print("\r[encoder] GPIO não disponível — usando simulador de teclado.")
     return SimulatedEncoder()
