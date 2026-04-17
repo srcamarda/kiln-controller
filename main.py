@@ -26,6 +26,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from notifier      import TelegramNotifier
 from sensor        import create_sensor
 from controller    import KilnController, ControllerMode
 from display       import Display
@@ -97,6 +98,11 @@ class KilnApp:
         self.relays     = create_relays()
         self.rtc        = create_rtc()
         self.curves     = load_curves()
+        
+        # Configuração do Telegram        
+        TOKEN = "SEU_TOKEN_AQUI"
+        CHAT_IDS = ["SEU_CHAT_ID"]
+        self.notifier = TelegramNotifier(TOKEN, CHAT_IDS)
 
         # Estado da UI
         self.ui         = UIState.IDLE
@@ -181,10 +187,14 @@ class KilnApp:
         if state.mode == ControllerMode.FINISHED and self.ui == UIState.RUNNING:
             self.ui = UIState.FINISHED
             self.relays.off()
+            # Alerta de conclusão
+            self.notifier.send(f"✅ *Queima Concluída!*\nCurva finalizada com sucesso.\nTemp. Máx atingida: {self.run_max_temp:.1f}°C")
 
         if state.mode == ControllerMode.ERROR and self.ui not in (UIState.ERROR, UIState.IDLE):
             self.ui = UIState.ERROR
             self.relays.off()
+            # Alerta de erro
+            self.notifier.send(f"🚨 *ERRO CRÍTICO!*\nFalha no termopar detectada.\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
 
     # ──────────────────────────────────────────────
     # Atualização do display
@@ -447,6 +457,9 @@ class KilnApp:
         self.run_start_str = self.rtc.now().strftime("%H:%M")
         self.controller.start_curve(curve, self.sensor.temperature)
         self.ui = UIState.RUNNING
+        
+        # Envia alerta do Telegram
+        self.notifier.send(f"🔥 *Queima Iniciada*\nCurva: {curve['name']}\nTemp. Atual: {self.sensor.temperature:.1f}°C")
 
     def _start_preheat(self):
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)
