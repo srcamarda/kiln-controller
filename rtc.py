@@ -45,10 +45,10 @@ def create_rtc():
         try:
             rtc = HardwareRTC()
             _ = rtc.now()
-            print("\r[[rtc] DS3231 detectado.")
+            print("\r[rtc] DS3231 detectado.")
             return rtc
         except Exception as e:
-            print(f"\r[[rtc] DS3231 falhou ({e}) — usando horário do sistema.")
+            print(f"\r[rtc] DS3231 falhou ({e}) — usando horário do sistema.")
     else:
-        print("\r[[rtc] Bibliotecas não disponíveis — usando horário do sistema.")
+        print("\r[rtc] Bibliotecas não disponíveis — usando horário do sistema.")
     return SystemRTC()
