@@ -114,7 +114,7 @@ class HardwareEncoder:
         # detecta mudança no CLK (borda)
         if clk != self._last_clk:
             # debounce temporal
-            if now - self._last_event_time > 0.002:  # 2ms
+            if now - self._last_event_time > 0.001:
 
                 if dt != clk:
                     self._events.append(EncoderEvent.ROTATE_CW)
