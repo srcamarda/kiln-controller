@@ -99,10 +99,13 @@ class KilnApp:
         self.rtc        = create_rtc()
         self.curves     = load_curves()
         
+        # Controle de notificações de hora em hora
+        self.last_hourly_announcement = 0
+        
         # Configuração do Telegram        
         TOKEN = "SEU_TOKEN_AQUI"
         CHAT_IDS = ["SEU_CHAT_ID"]
-        self.notifier = TelegramNotifier(TOKEN, CHAT_IDS)
+        self.notifier = TelegramNotifier(TOKEN, CHAT_IDS, status_callback=self._generate_status)
 
         # Estado da UI
         self.ui         = UIState.IDLE
@@ -170,6 +173,29 @@ class KilnApp:
     # Ciclo de controle
     # ──────────────────────────────────────────────
 
+    def _generate_status(self, is_hourly=False) -> str:
+        """Gera o texto de status atual para o Telegram."""
+        temp = self.sensor.temperature
+        state = self.controller.state
+        
+        prefix = "⏱ *Atualização de Hora em Hora*\n" if is_hourly else "📊 *Status do Forno*\n"
+            
+        if self.ui == UIState.RUNNING:
+            if state.mode == ControllerMode.SOAKING:
+                rem_m = int(self.controller.soak_remaining_seconds() // 60)
+                return f"{prefix}Modo: Patamar (Soak)\nTemp: {temp:.1f}°C (Alvo: {state.setpoint:.0f}°C)\nRestante: {rem_m} min"
+            else:
+                seg = state.curve["segments"][state.segment_index]
+                return f"{prefix}Curva: {state.curve['name']} (Seg {state.segment_index+1}/{len(state.curve['segments'])})\nTemp: {temp:.1f}°C (Alvo: {seg['target_temp']}°C)\nTaxa: {state.display_rate:+.0f}°C/h"
+                
+        if self.ui == UIState.PREHEAT_RUN:
+            return f"{prefix}Modo: Pré-aquecimento\nTemp: {temp:.1f}°C (Alvo: {self.preheat_target:.0f}°C)"
+            
+        if self.ui == UIState.FINISHED:
+            return f"{prefix}A última queima foi concluída.\nTemp. Atual (Resfriando): {temp:.1f}°C"
+            
+        return f"{prefix}Estado da UI: {self.ui.upper()}\nTemp: {temp:.1f}°C"
+
     def _control_tick(self):
         temp  = self.sensor.temperature
         fault = self.sensor.fault
@@ -196,6 +222,16 @@ class KilnApp:
             # Alerta de erro
             self.notifier.send(f"🚨 *ERRO CRÍTICO!*\nFalha no termopar detectada.\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
 
+        # Aviso automático de hora em hora
+        if self.ui in (UIState.RUNNING, UIState.PREHEAT_RUN):
+            elapsed_s = self.controller.run_elapsed_seconds()
+            hours_elapsed = int(elapsed_s // 3600)
+            
+            if hours_elapsed > self.last_hourly_announcement and hours_elapsed > 0:
+                self.last_hourly_announcement = hours_elapsed
+                status_msg = self._generate_status(is_hourly=True)
+                self.notifier.send(status_msg)                
+                
     # ──────────────────────────────────────────────
     # Atualização do display
     # ──────────────────────────────────────────────
@@ -457,6 +493,7 @@ class KilnApp:
         self.run_start_str = self.rtc.now().strftime("%H:%M")
         self.controller.start_curve(curve, self.sensor.temperature)
         self.ui = UIState.RUNNING
+        self.last_hourly_announcement = 0
         
         # Envia alerta do Telegram
         self.notifier.send(f"🔥 *Queima Iniciada*\nCurva: {curve['name']}\nTemp. Atual: {self.sensor.temperature:.1f}°C")
@@ -464,6 +501,7 @@ class KilnApp:
     def _start_preheat(self):
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)
         self.ui = UIState.PREHEAT_RUN
+        self.last_hourly_announcement = 0
 
     def _stop_run(self):
         self.controller.stop()
