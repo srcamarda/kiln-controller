@@ -70,6 +70,7 @@ class HardwareEncoder:
     def __init__(self, pin_clk, pin_dt, pin_sw):
         import threading
         self._lock = threading.Lock()
+        self._ready = True
         
         self._clk = Button(pin_clk, pull_up=True, bounce_time=None)
         self._dt  = Button(pin_dt,  pull_up=True, bounce_time=None)
@@ -111,12 +112,20 @@ class HardwareEncoder:
             if move != 0:
                 self._acc += move
 
-                if self._acc >= 2:
-                    self._events.append(EncoderEvent.ROTATE_CW)
-                    self._acc = 0
-                elif self._acc <= -2:
-                    self._events.append(EncoderEvent.ROTATE_CCW)
-                    self._acc = 0
+                # Detecta estado estável (detent)
+                if state == 0b11:
+                    if self._ready:
+                        if self._acc >= 4:
+                            self._events.append(EncoderEvent.ROTATE_CW)
+                        elif self._acc <= -4:
+                            self._events.append(EncoderEvent.ROTATE_CCW)
+
+                        self._ready = False
+                        self._acc = 0
+
+                else:
+                    # saiu do detent → pronto pra próximo
+                    self._ready = True
 
         self._last_state = state
 
