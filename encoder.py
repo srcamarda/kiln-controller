@@ -50,15 +50,15 @@ class EncoderEvent(Enum):
     LONG_PRESS = auto()
 
 _TRANSITIONS = {
-    (0b00, 0b01): +1,
-    (0b01, 0b11): +1,
-    (0b11, 0b10): +1,
-    (0b10, 0b00): +1,
+    (0b00, 0b01): -1,
+    (0b01, 0b11): -1,
+    (0b11, 0b10): -1,
+    (0b10, 0b00): -1,
 
-    (0b00, 0b10): -1,
-    (0b10, 0b11): -1,
-    (0b11, 0b01): -1,
-    (0b01, 0b00): -1,
+    (0b00, 0b10): +1,
+    (0b10, 0b11): +1,
+    (0b11, 0b01): +1,
+    (0b01, 0b00): +1,
 }
 
 # ──────────────────────────────────────────────
@@ -111,10 +111,10 @@ class HardwareEncoder:
             if move != 0:
                 self._acc += move
 
-                if self._acc >= 4:
+                if self._acc >= 2:
                     self._events.append(EncoderEvent.ROTATE_CW)
                     self._acc = 0
-                elif self._acc <= -4:
+                elif self._acc <= -2:
                     self._events.append(EncoderEvent.ROTATE_CCW)
                     self._acc = 0
 
