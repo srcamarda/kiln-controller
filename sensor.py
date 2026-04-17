@@ -22,15 +22,15 @@ except (ImportError, NotImplementedError):
 class SimulatedSensor:
     """
     Modelo térmico simples do forno.
-    - Banco A sozinho: +1.2°C/s de ganho
-    - Banco A + B:     +2.2°C/s de ganho
-    - Sem bancos:      -0.3°C/s de perda (resfriamento passivo)
+    - Banco A sozinho: +0.08°C/s de ganho
+    - Banco A + B:     +0.15°C/s de ganho
+    - Sem bancos:      -0.02°C/s de perda (resfriamento passivo)
     Temperatura ambiente inicial: 25°C.
     """
 
-    GAIN_A_ONLY  = 1.2   # °C/s com só banco A
-    GAIN_A_AND_B = 2.2   # °C/s com ambos os bancos
-    LOSS         = 0.3   # °C/s de resfriamento passivo
+    GAIN_A_ONLY  = 0.08   # °C/s
+    GAIN_A_AND_B = 0.15   # °C/s
+    LOSS         = 0.02   # °C/s resfriamento passivo
     AMBIENT      = 25.0
 
     def __init__(self):

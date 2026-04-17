@@ -40,7 +40,7 @@ from curves_manager import (load_curves, save_curves,
 # Constantes
 # ──────────────────────────────────────────────
 
-LOOP_HZ         = 2      # ciclos por segundo do loop de controle
+LOOP_HZ         = 0.2    # ciclos por segundo do loop de controle
 DISPLAY_HZ      = 2      # atualizações de display por segundo
 PREHEAT_MIN     = 100
 PREHEAT_MAX     = 600

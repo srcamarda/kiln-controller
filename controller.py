@@ -21,7 +21,7 @@ def _log(msg): print(f"\r{msg}")
 # Configurações
 # ──────────────────────────────────────────────
 
-HYSTERESIS      = 5.0    # °C — margem bang-bang (liga abaixo, desliga acima)
+HYSTERESIS      = 8.0    # °C — margem bang-bang (liga abaixo, desliga acima)
 WARMUP_TEMP     = 60.0   # °C — abaixo disso banco A fica sempre ligado (sem bang-bang)
 DUAL_BANK_TEMP  = 600.0  # °C — abaixo disso só banco A
 RATE_TOLERANCE  = 1.20   # 20% acima do rate alvo → desliga banco B
