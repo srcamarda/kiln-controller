@@ -112,24 +112,16 @@ class HardwareEncoder:
         move = _TRANSITIONS.get((last, state), 0)
 
         if move != 0:
-            with self._lock:
-                self._acc += move
+                    with self._lock:
+                        self._acc += move
 
-                STEP = 3
-
-                # Dispara evento
-                if self._acc >= STEP:
-                    self._events.append(EncoderEvent.ROTATE_CW)
-                    self._acc -= STEP
-                elif self._acc <= -STEP:
-                    self._events.append(EncoderEvent.ROTATE_CCW)
-                    self._acc += STEP
-
-                # Clamp (evita acúmulo estranho por ruído)
-                if self._acc > STEP:
-                    self._acc = STEP
-                elif self._acc < -STEP:
-                    self._acc = -STEP
+                        # Reduzido de 4 para 2 para compensar estados perdidos
+                        if self._acc >= 2:
+                            self._events.append(EncoderEvent.ROTATE_CW)
+                            self._acc = 0   # Zera para evitar dessincronização
+                        elif self._acc <= -2:
+                            self._events.append(EncoderEvent.ROTATE_CCW)
+                            self._acc = 0   # Zera para evitar dessincronização
 
         self._last_state = state
 
