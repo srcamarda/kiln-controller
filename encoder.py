@@ -81,6 +81,9 @@ class HardwareEncoder:
         self._in_cycle = False
         self._last_event_time = 0
         self._acc = 0
+        
+        self._last_clk = int(self._clk.value)
+        self._last_event_time = 0
 
         self._sw_pressed = False
         self._press_time = 0.0
@@ -103,31 +106,24 @@ class HardwareEncoder:
         return (clk << 1) | dt
 
     def _on_rotate(self):
-        state = self._read_state()
-        last  = self._last_state
+        now = time.monotonic()
 
-        with self._lock:
-            move = _TRANSITIONS.get((last, state), 0)
+        clk = int(self._clk.value)
+        dt  = int(self._dt.value)
 
-            if move != 0:
-                self._acc += move
+        # detecta mudança no CLK (borda)
+        if clk != self._last_clk:
+            # debounce temporal
+            if now - self._last_event_time > 0.002:  # 2ms
 
-                # Detecta estado estável (detent)
-                if state == 0b11:
-                    if self._ready:
-                        if self._acc >= 4:
-                            self._events.append(EncoderEvent.ROTATE_CW)
-                        elif self._acc <= -4:
-                            self._events.append(EncoderEvent.ROTATE_CCW)
-
-                        self._ready = False
-                        self._acc = 0
-
+                if dt != clk:
+                    self._events.append(EncoderEvent.ROTATE_CW)
                 else:
-                    # saiu do detent → pronto pra próximo
-                    self._ready = True
+                    self._events.append(EncoderEvent.ROTATE_CCW)
 
-        self._last_state = state
+                self._last_event_time = now
+
+        self._last_clk = clk
 
     def _on_button_press(self):
         self._sw_pressed = True
