@@ -49,6 +49,17 @@ class EncoderEvent(Enum):
     CLICK      = auto()
     LONG_PRESS = auto()
 
+_TRANSITIONS = {
+    (0b00, 0b01): +1,
+    (0b01, 0b11): +1,
+    (0b11, 0b10): +1,
+    (0b10, 0b00): +1,
+
+    (0b00, 0b10): -1,
+    (0b10, 0b11): -1,
+    (0b11, 0b01): -1,
+    (0b01, 0b00): -1,
+}
 
 # ──────────────────────────────────────────────
 # Hardware real
@@ -89,31 +100,19 @@ class HardwareEncoder:
     def _on_rotate(self):
         state = self._read_state()
         last  = self._last_state
-        print(f"STATE: {state:02b}") # debug
 
-        # Início do ciclo
-        if not self._in_cycle and last == 0b11:
-            if state == 0b10:
-                self._direction = -1
-                self._in_cycle = True
-            elif state == 0b01:
-                self._direction = +1
-                self._in_cycle = True
+        move = _TRANSITIONS.get((last, state), 0)
 
-        # Fim do ciclo
-        elif self._in_cycle and state == 0b11:
-            now = time.monotonic()
+        if move != 0:
+            self._acc += move
 
-            if now - self._last_event_time > 0.003:
-                if self._direction == +1:
-                    self._events.append(EncoderEvent.ROTATE_CW)
-                elif self._direction == -1:
-                    self._events.append(EncoderEvent.ROTATE_CCW)
-
-                self._last_event_time = now
-
-            self._in_cycle = False
-            self._direction = 0
+            # 4 passos = 1 "clique" do encoder
+            if self._acc >= 4:
+                self._events.append(EncoderEvent.ROTATE_CW)
+                self._acc = 0
+            elif self._acc <= -4:
+                self._events.append(EncoderEvent.ROTATE_CCW)
+                self._acc = 0
 
         self._last_state = state
 
