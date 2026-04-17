@@ -106,24 +106,24 @@ class HardwareEncoder:
         return (clk << 1) | dt
 
     def _on_rotate(self):
-        now = time.monotonic()
+        state = self._read_state()
+        last  = self._last_state
 
-        clk = int(self._clk.value)
-        dt  = int(self._dt.value)
+        move = _TRANSITIONS.get((last, state), 0)
 
-        # detecta mudança no CLK (borda)
-        if clk != self._last_clk:
-            # debounce temporal
-            if now - self._last_event_time > 0.001:
+        if move != 0:
+            with self._lock:
+                self._acc += move
 
-                if dt != clk:
+                # em vez de resetar sempre, consome apenas o necessário
+                if self._acc >= 4:
                     self._events.append(EncoderEvent.ROTATE_CW)
-                else:
+                    self._acc -= 4
+                elif self._acc <= -4:
                     self._events.append(EncoderEvent.ROTATE_CCW)
+                    self._acc += 4
 
-                self._last_event_time = now
-
-        self._last_clk = clk
+        self._last_state = state
 
     def _on_button_press(self):
         self._sw_pressed = True
