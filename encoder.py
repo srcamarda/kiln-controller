@@ -68,6 +68,9 @@ _TRANSITIONS = {
 class HardwareEncoder:
 
     def __init__(self, pin_clk, pin_dt, pin_sw):
+        import threading
+        self._lock = threading.Lock()
+        
         self._clk = Button(pin_clk, pull_up=True, bounce_time=None)
         self._dt  = Button(pin_dt,  pull_up=True, bounce_time=None)
         self._sw  = Button(pin_sw,  pull_up=True, bounce_time=0.05)
@@ -76,6 +79,7 @@ class HardwareEncoder:
         self._direction = 0
         self._in_cycle = False
         self._last_event_time = 0
+        self._acc = 0
 
         self._sw_pressed = False
         self._press_time = 0.0
@@ -101,18 +105,18 @@ class HardwareEncoder:
         state = self._read_state()
         last  = self._last_state
 
-        move = _TRANSITIONS.get((last, state), 0)
+        with self._lock:
+            move = _TRANSITIONS.get((last, state), 0)
 
-        if move != 0:
-            self._acc += move
+            if move != 0:
+                self._acc += move
 
-            # 4 passos = 1 "clique" do encoder
-            if self._acc >= 4:
-                self._events.append(EncoderEvent.ROTATE_CW)
-                self._acc = 0
-            elif self._acc <= -4:
-                self._events.append(EncoderEvent.ROTATE_CCW)
-                self._acc = 0
+                if self._acc >= 4:
+                    self._events.append(EncoderEvent.ROTATE_CW)
+                    self._acc = 0
+                elif self._acc <= -4:
+                    self._events.append(EncoderEvent.ROTATE_CCW)
+                    self._acc = 0
 
         self._last_state = state
 
@@ -130,8 +134,9 @@ class HardwareEncoder:
         self._sw_pressed = False
 
     def poll(self) -> list:
-        events = self._events[:]
-        self._events.clear()
+        with self._lock:
+            events = self._events[:]
+            self._events.clear()
         return events
 
     def cleanup(self):
