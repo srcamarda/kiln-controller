@@ -126,6 +126,7 @@ class KilnApp:
         self.editing_existing = False  # True = edição, False = nova
 
         # Resumo da última queima
+        self.run_final_duration = 0.0
         self.run_max_temp   = 0.0
         self.run_start_str  = ""
 
@@ -211,14 +212,19 @@ class KilnApp:
 
         # Transições automáticas do controlador
         if state.mode == ControllerMode.FINISHED and self.ui == UIState.RUNNING:
+            # Salva o tempo decorrido exato do término
+            self.run_final_duration = self.controller.run_elapsed_seconds()
+    
             self.ui = UIState.FINISHED
             self.relays.off()
+            
             # Alerta de conclusão
-            self.notifier.send(f"✅ *Queima Concluída!*\nCurva finalizada com sucesso.\nTemp. Máx atingida: {self.run_max_temp:.1f}°C")
+            self.notifier.send(f"✅ *Queima Concluída!*\nDuração total: {int(self.run_final_duration // 3600)}\nTemp. Máx: {self.run_max_temp:.1f}°C")
 
         if state.mode == ControllerMode.ERROR and self.ui not in (UIState.ERROR, UIState.IDLE):
             self.ui = UIState.ERROR
             self.relays.off()
+            
             # Alerta de erro
             self.notifier.send(f"🚨 *ERRO CRÍTICO!*\nFalha no termopar detectada.\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
 
@@ -281,9 +287,9 @@ class KilnApp:
 
         elif ui == UIState.FINISHED:
             self.display.show_finished(
-                elapsed_s     = self.controller.run_elapsed_seconds(),
-                max_temp      = self.run_max_temp,
-                start_time_str= self.run_start_str,
+                elapsed_s      = self.run_final_duration,
+                max_temp       = self.run_max_temp,
+                start_time_str = self.run_start_str,
             )
 
         elif ui == UIState.ERROR:
