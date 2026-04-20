@@ -40,7 +40,7 @@ class HardwareRelays:
     # HL-52S: LOW ativa o relé
     ACTIVE_LOW = True
 
-    def __init__(self, pin_a=13, pin_b=19):
+    def __init__(self, pin_a, pin_b):
         self._state_a = False
         self._state_b = False
 
@@ -103,7 +103,7 @@ class SimulatedRelays:
 # Factory
 # ──────────────────────────────────────────────
 
-def create_relays(pin_a, pin_b):
+def create_relays(pin_a=13, pin_b=19):
     if _HW_AVAILABLE:
         print("\r[relays] Usando GPIO hardware.")
         return HardwareRelays(pin_a, pin_b)
