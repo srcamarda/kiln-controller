@@ -1,5 +1,5 @@
 [
-    {
+  {
     "id": "curva_1",
     "name": "Biscoito Lento",
     "segments": [
@@ -32,7 +32,7 @@
       }
     ],
     "soak_minutes": 15
-  },  
+  },
   {
     "id": "curva_3",
     "name": "Cone 6",
@@ -78,5 +78,44 @@
       }
     ],
     "soak_minutes": 20
+  },
+  {
+    "id": "curva_5",
+    "name": "Queima Alta",
+    "segments": [
+      {
+        "rate_per_hour": 155,
+        "target_temp": 180
+      },
+      {
+        "rate_per_hour": 260,
+        "target_temp": 440
+      },
+      {
+        "rate_per_hour": 230,
+        "target_temp": 670
+      },
+      {
+        "rate_per_hour": 210,
+        "target_temp": 880
+      },
+      {
+        "rate_per_hour": 120,
+        "target_temp": 1000
+      },
+      {
+        "rate_per_hour": 85,
+        "target_temp": 1085
+      },
+      {
+        "rate_per_hour": 75,
+        "target_temp": 1160
+      },
+      {
+        "rate_per_hour": 45,
+        "target_temp": 1220
+      }
+    ],
+    "soak_minutes": 25
   }
 ]
