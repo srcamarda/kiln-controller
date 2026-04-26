@@ -83,6 +83,9 @@ class HardwareSensor:
 
         # Buffer circular para o filtro de mediana
         self._history = []
+        
+        # Limite de variação real de temperatura em 0.5s
+        self.MAX_PHYSICAL_JUMP = 5.0
 
     def update(self, bank_a: bool, bank_b: bool):        
         pass
@@ -92,16 +95,25 @@ class HardwareSensor:
         try:
             val = self._dev.temperature
             if val is not None:
+                # Se já temos um histórico sólido, validamos a física
+                if len(self._history) >= 3:
+                    current_median = statistics.median(self._history)
+                    
+                    # Se o salto for fisicamente impossível, ignoramos a leitura falsa
+                    if abs(val - current_median) > self.MAX_PHYSICAL_JUMP:
+                        val = current_median 
+                
                 self._history.append(val)
                 
-                if len(self._history) > 5:
-                    self._history.pop(0)                
+                # Mantém 10 amostras
+                if len(self._history) > 10:
+                    self._history.pop(0)
                 
                 return statistics.median(self._history)
         except Exception:
             pass
             
-        # Se falhar ou estiver vazio, retorna a última leitura válida 
+        # Se falhar a comunicação, mantém a última temperatura válida
         if self._history:
             return statistics.median(self._history)
         return 0.0
