@@ -9,6 +9,7 @@ import time
 try:
     import board
     import busio
+    import digitalio
     import adafruit_max31855
     _HW_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -68,13 +69,16 @@ class SimulatedSensor:
 class HardwareSensor:
     """
     Lê o MAX31855 via SPI1 (spidev1.0).
-    CS no GPIO18, SCK no GPIO21, DO no GPIO19.
+    DO no GPIO26, CS no GPIO20, SCK no GPIO21.
     """
 
     def __init__(self):
-        spi = busio.SPI(clock=board.SCLK_1,
-                        MISO=board.MISO_1)
-        cs  = board.CE0  # ajustar se necessário
+        # Define o Clock (SCK) e o MISO (DO) usando os pinos GPIO escolhidos
+        spi = busio.SPI(clock=board.D21, MISO=board.D26)
+        
+        # Configura o pino CS como uma saída digital
+        cs = digitalio.DigitalInOut(board.D20)
+        
         self._dev = adafruit_max31855.MAX31855(spi, cs)
 
     def update(self, bank_a: bool, bank_b: bool):
