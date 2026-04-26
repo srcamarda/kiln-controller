@@ -4,6 +4,7 @@ Em modo simulado, modela aquecimento/resfriamento com inércia simples.
 """
 
 import time
+import os
 
 # Tenta importar bibliotecas reais do hardware
 try:
@@ -101,6 +102,10 @@ class HardwareSensor:
 
 def create_sensor():
     if _HW_AVAILABLE:
+        if os.environ.get("SIM_TEMP") == "1":
+            print("\r[sensor] Simulação forçada (SIM_TEMP=1).")
+            return SimulatedSensor()
+    
         try:
             sensor = HardwareSensor()
             # Leitura de teste para confirmar comunicação

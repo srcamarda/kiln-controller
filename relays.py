@@ -19,13 +19,10 @@ except Exception:
     OutputDevice = None
 
 def _hw_available():
+    if os.environ.get("SIM_RELAYS") == "1":
+        return False
     if not _GPIO_AVAILABLE:
         return False
-    kiln_hw = os.environ.get("KILN_HW")
-    if kiln_hw == "0":
-        return False
-    if kiln_hw == "1":
-        return True
     return True
 
 _HW_AVAILABLE = _hw_available()

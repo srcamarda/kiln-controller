@@ -4,6 +4,7 @@ Fallback para horário do sistema se o módulo não estiver presente.
 """
 
 from datetime import datetime
+import os
 
 try:
     import board
@@ -41,6 +42,10 @@ class SystemRTC:
 
 
 def create_rtc():
+    if os.environ.get("SIM_RTC") == "1":
+        print("\r[rtc] Simulação forçada (SIM_RTC=1).")
+        return SystemRTC()
+    
     if _HW_AVAILABLE:
         try:
             rtc = HardwareRTC()
