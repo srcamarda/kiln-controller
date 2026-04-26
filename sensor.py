@@ -5,6 +5,7 @@ Em modo simulado, modela aquecimento/resfriamento com inércia simples.
 
 import time
 import os
+import statistics
 
 # Tenta importar bibliotecas reais do hardware
 try:
@@ -74,26 +75,43 @@ class HardwareSensor:
     DO no GPIO19, CS no GPIO20, SCK no GPIO21.
     """
 
-    def __init__(self):
-        # Inicia o barramento SPI1 de hardware nativo
-        spi = busio.SPI(clock=board.D21, MISO=board.D19)
-        
-        # Configura o CS
+    def __init__(self):        
+        spi = busio.SPI(clock=board.D21, MISO=board.D19) 
         cs = digitalio.DigitalInOut(board.D20)
         
         self._dev = adafruit_max31855.MAX31855(spi, cs)
 
-    def update(self, bank_a: bool, bank_b: bool):
-        """Sem efeito no hardware — estado dos bancos não afeta a leitura."""
+        # Buffer circular para o filtro de mediana
+        self._history = []
+
+    def update(self, bank_a: bool, bank_b: bool):        
         pass
 
     @property
     def temperature(self) -> float:
-        return self._dev.temperature
+        try:
+            val = self._dev.temperature
+            if val is not None:
+                self._history.append(val)
+                
+                if len(self._history) > 5:
+                    self._history.pop(0)                
+                
+                return statistics.median(self._history)
+        except Exception:
+            pass
+            
+        # Se falhar ou estiver vazio, retorna a última leitura válida 
+        if self._history:
+            return statistics.median(self._history)
+        return 0.0
 
     @property
     def fault(self) -> bool:
-        return self._dev.temperature is None
+        try:
+            return self._dev.temperature is None
+        except Exception:
+            return True
 
 
 # ──────────────────────────────────────────────
