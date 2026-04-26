@@ -12,7 +12,8 @@ try:
     import digitalio
     import adafruit_max31855
     _HW_AVAILABLE = True
-except (ImportError, NotImplementedError):
+except Exception as e:
+    print(f"\r[debug] Erro de importação: {e}")
     _HW_AVAILABLE = False
 
 
