@@ -70,14 +70,14 @@ class SimulatedSensor:
 class HardwareSensor:
     """
     Lê o MAX31855 via SPI1 (spidev1.0).
-    DO no GPIO26, CS no GPIO20, SCK no GPIO21.
+    DO no GPIO19, CS no GPIO20, SCK no GPIO21.
     """
 
     def __init__(self):
-        # Define o Clock (SCK) e o MISO (DO) usando os pinos GPIO escolhidos
-        spi = busio.SPI(clock=board.D21, MISO=board.D26)
+        # Inicia o barramento SPI1 de hardware nativo
+        spi = busio.SPI(clock=board.D21, MISO=board.D19)
         
-        # Configura o pino CS como uma saída digital
+        # Configura o CS
         cs = digitalio.DigitalInOut(board.D20)
         
         self._dev = adafruit_max31855.MAX31855(spi, cs)

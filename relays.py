@@ -3,7 +3,7 @@ relays.py — Controle dos relés dos bancos A e B via GPIO.
 
 Pinagem padrão:
   Banco A → GPIO13  (pino físico 33)
-  Banco B → GPIO19  (pino físico 35)
+  Banco B → GPIO16  (pino físico 36)
 
 O módulo HL-52S é ativo em LOW (LOW = relé fechado).
 A lógica é invertida aqui para que True = banco ligado.
@@ -103,7 +103,7 @@ class SimulatedRelays:
 # Factory
 # ──────────────────────────────────────────────
 
-def create_relays(pin_a=13, pin_b=19):
+def create_relays(pin_a=13, pin_b=16):
     if _HW_AVAILABLE:
         print("\r[relays] Usando GPIO hardware.")
         return HardwareRelays(pin_a, pin_b)
