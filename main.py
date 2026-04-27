@@ -376,13 +376,13 @@ class KilnApp:
         elif ui == UIState.CONFIRMING:
             if delta:
                 curve = self.curves[self.curve_sel]
-                total_segs = len(curve["segments"]) + 1
-                num_visible = 5
                 
-                # O scroll máximo é o total de itens menos os que já cabem na tela
-                max_scroll = max(0, total_segs - num_visible)
+                # Total de itens é segmentos + 1 linha do patamar
+                total_items = len(curve["segments"]) + 1 
+                visible_items = 5 
                 
-                # Soma o delta limitando entre 0 e max_scroll
+                max_scroll = max(0, total_items - visible_items)
+                
                 self.confirm_scroll = max(0, min(max_scroll, self.confirm_scroll + delta))
                 
             elif click:

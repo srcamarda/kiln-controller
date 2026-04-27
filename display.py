@@ -189,25 +189,25 @@ def _render_confirming(draw, curve):
     time_str = _fmt_time(est_time)
     draw.text((12, 42), f"{curve['name']} - {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
 
-    # Prepara a lista unificada de lines (Segmentos + Patamar final)
+    # Prepara a lista unificada de linhas (Segmentos + Patamar final)
     lines = []
     for i, seg in enumerate(curve["segments"]):
         lines.append(f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C")
     lines.append(f"Patamar:  {curve['soak_minutes']} min")
 
     # Lógica de fatiamento (Scroll)
-    num_visible = 5
-    visible = lines[scroll_idx : scroll_idx + num_visible]
+    visible_items = 5
+    visible_lines = lines[scroll_idx : scroll_idx + visible_items]
 
-    y = 70
-    for line in visible:
-        draw.text((12, y), line, font=_font(15), fill=C_TEXT)
-        y += 24  # Espaçamento entre linhas
+    y_pos = 70
+    for line in visible_lines:
+        draw.text((12, y_pos), line, font=_font(15), fill=C_TEXT)
+        y_pos += 24  # Espaçamento entre linhas
 
     # Desenha os indicadores de scroll (Setas) na lateral direita
     if scroll_idx > 0:
         draw.text((W - 20, 70), "▲", font=_font(14), fill=C_BLUE)
-    if scroll_idx + num_visible < len(lines):
+    if scroll_idx + visible_items < len(lines):
         draw.text((W - 20, 166), "▼", font=_font(14), fill=C_BLUE)
     
     # Ações na barra inferior
