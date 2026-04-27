@@ -37,7 +37,7 @@ def _hw_available():
 _HW_AVAILABLE = _hw_available()
 
 
-LONG_PRESS_MS = 1000  # ms para considerar click longo
+LONG_PRESS_MS = 800  # ms para considerar click longo
 
 
 class EncoderEvent(Enum):
