@@ -342,6 +342,21 @@ def _render_error(draw, message="Falha no termopar"):
     
     _text_center(draw, 185, "FORNO INATIVO", _font(16), C_DIM)    
     _text_center(draw, 210, "Click → Menu", _font(18, bold=True), C_TEXT)
+    
+    
+def _render_cancel_confirm(draw):
+    """Tela de alerta para confirmar o cancelamento da queima"""
+    _text_center(draw, 10,  "⚠  ATENÇÃO  ⚠", _font(28, bold=True), C_RED)
+    _divider(draw, 50)
+    
+    _text_center(draw, 85,  "Deseja realmente", _font(22), C_TEXT)
+    _text_center(draw, 118, "cancelar a queima?", _font(22), C_TEXT)
+    _divider(draw, 170)
+    
+    # Ações
+    draw.text((12, 210), "Click → SIM (Parar)", font=_font(16, bold=True), fill=C_RED)
+    bbox = draw.textbbox((0, 0), "Longo → NÃO (Voltar)", font=_font(16))
+    draw.text((W - bbox[2] - 12, 210), "Longo → NÃO (Voltar)", font=_font(16), fill=C_GREEN)
 
 
 def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_new):
@@ -585,6 +600,11 @@ class Display:
     def show_error(self, message: str = "Falha no termopar"):
         img, draw = self._new_frame()
         _render_error(draw, message)
+        self._write(img)
+        
+    def show_cancel_confirm(self):
+        img, draw = self._new_frame()
+        _render_cancel_confirm(draw)
         self._write(img)
 
     def show_curve_segment(self, seg_index: int, seg_total: int,

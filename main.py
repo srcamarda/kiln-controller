@@ -74,6 +74,7 @@ class UIState:
     RUNNING        = "running"
     PREHEAT_SET    = "preheat_set"
     PREHEAT_RUN    = "preheat_run"
+    CANCEL_CONFIRM = "cancel_confirm"
     FINISHED       = "finished"
     ERROR          = "error"
     CURVE_NEW_SEG  = "curve_new_seg"
@@ -222,7 +223,7 @@ class KilnApp:
         self.relays.set(state.bank_a, state.bank_b)
 
         # Transições automáticas do controlador
-        if state.mode == ControllerMode.FINISHED and self.ui == UIState.RUNNING:
+        if state.mode == ControllerMode.FINISHED and self.ui in (UIState.RUNNING, UIState.CANCEL_CONFIRM):
             # Salva o tempo decorrido exato do término
             self.run_final_duration = self.controller.run_elapsed_seconds()
     
@@ -240,7 +241,7 @@ class KilnApp:
             self.notifier.send(f"🚨 *ERRO CRÍTICO!*\nFalha no termopar detectada.\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
 
         # Aviso automático de hora em hora
-        if self.ui in (UIState.RUNNING, UIState.PREHEAT_RUN):
+        if self.ui in (UIState.RUNNING, UIState.PREHEAT_RUN, UIState.CANCEL_CONFIRM):
             elapsed_s = self.controller.run_elapsed_seconds()
             hours_elapsed = int(elapsed_s // 3600)
             
@@ -295,6 +296,9 @@ class KilnApp:
 
         elif ui == UIState.PREHEAT_RUN:
             self.display.show_preheat(temp, self.preheat_target, bank_a=state.bank_a)
+
+        elif ui == UIState.CANCEL_CONFIRM:
+            self.display.show_cancel_confirm()
 
         elif ui == UIState.FINISHED:
             self.display.show_finished(
@@ -404,7 +408,7 @@ class KilnApp:
         # ── RUNNING ───────────────────────────────
         elif ui == UIState.RUNNING:
             if long_:
-                self._stop_run()
+                self.ui = UIState.CANCEL_CONFIRM
 
         # ── PREHEAT SET ───────────────────────────
         elif ui == UIState.PREHEAT_SET:
@@ -424,7 +428,18 @@ class KilnApp:
                     min(PREHEAT_MAX, self.preheat_target + delta * PREHEAT_STEP))
                 self.controller.set_preheat_target(self.preheat_target)
             elif long_:
+                self.ui = UIState.CANCEL_CONFIRM
+                
+        # ── CANCEL CONFIRM ────────────────────────
+        elif ui == UIState.CANCEL_CONFIRM:
+            if click:
                 self._stop_run()
+            elif long_:
+                # Se desistir de cancelar, volta para a tela correspondente ao modo atual
+                if self.controller.state.mode == ControllerMode.PREHEAT:
+                    self.ui = UIState.PREHEAT_RUN
+                else:
+                    self.ui = UIState.RUNNING
 
         # ── FINISHED ──────────────────────────────
         elif ui == UIState.FINISHED:
