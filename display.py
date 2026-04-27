@@ -430,7 +430,7 @@ def _render_curve_soak(draw, minutes, is_new):
     draw.text((W - bbox[2] - 12, 210), "Longo → Cancelar", font=_font(16), fill=C_DIM)
     
 
-def _render_curve_save(draw, curve_name, segments, soak_min):
+def _render_curve_save(draw, curve_name, segments, soak_min, scroll_idx=0):
     """Confirmação antes de salvar."""
     _text_center(draw, 8, "SALVAR CURVA?", _font(18, bold=True), C_TEXT)
     _divider(draw, 35)
@@ -438,17 +438,28 @@ def _render_curve_save(draw, curve_name, segments, soak_min):
     # Nome da curva
     draw.text((12, 42), curve_name, font=_font(18, bold=True), fill=C_ORANGE)
 
-    # Segmentos
-    y = 70
+    # Prepara a lista unificada de linhas
+    lines = []
     for i, seg in enumerate(segments):
-        label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
-        draw.text((12, y), label, font=_font(15), fill=C_TEXT)
-        y += 22
+        lines.append(f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C")
+    lines.append(f"Patamar:  {soak_min} min")
 
-    # Patamar
-    draw.text((12, y + 2), f"Patamar:  {soak_min} min", font=_font(15), fill=C_TEXT)
+    # Lógica de fatiamento
+    visible_items = 5
+    visible_lines = lines[scroll_idx : scroll_idx + visible_items]
 
-    # Ações
+    y_pos = 70
+    for line in visible_lines:
+        draw.text((12, y_pos), line, font=_font(15), fill=C_TEXT)
+        y_pos += 24
+
+    # Indicadores visuais de scroll
+    if scroll_idx > 0:
+        draw.text((W - 20, 70), "▲", font=_font(14), fill=C_BLUE)
+    if scroll_idx + visible_items < len(lines):
+        draw.text((W - 20, 166), "▼", font=_font(14), fill=C_BLUE)
+
+    # Barra de ações inferior
     _divider(draw, 200)
     draw.text((12, 210), "Click → Salvar", font=_font(16, bold=True), fill=C_GREEN)
     bbox = draw.textbbox((0, 0), "Longo → Descartar", font=_font(16))
@@ -592,9 +603,9 @@ class Display:
         _render_curve_soak(draw, minutes, is_new)
         self._write(img)
 
-    def show_curve_save(self, curve_name: str, segments: list, soak_min: int):
+    def show_curve_save(self, curve_name: str, segments: list, soak_min: int, scroll_idx: int = 0):
         img, draw = self._new_frame()
-        _render_curve_save(draw, curve_name, segments, soak_min)
+        _render_curve_save(draw, curve_name, segments, soak_min, scroll_idx)
         self._write(img)
 
     def show_curve_list_edit(self, curves: list, selected: int):

@@ -124,12 +124,14 @@ class KilnApp:
         self.edit_target    = 500
         self.edit_soak      = 30
         self.editing_existing = False  # True = edição, False = nova
-        self.confirm_scroll   = 0
+        
+        self.confirm_scroll = 0
+        self.save_scroll    = 0
 
         # Resumo da última queima
         self.run_final_duration = 0.0
-        self.run_max_temp   = 0.0
-        self.run_start_str  = ""
+        self.run_max_temp       = 0.0
+        self.run_start_str      = ""
 
         # Controle de tempo
         self._last_control  = 0.0
@@ -330,6 +332,7 @@ class KilnApp:
                 self.edit_curve["name"],
                 self.edit_curve["segments"],
                 self.edit_curve["soak_minutes"],
+                scroll_idx=self.save_scroll
             )
 
         elif ui == UIState.CURVE_EDIT_LIST:
@@ -469,13 +472,20 @@ class KilnApp:
                     min(240, self.edit_soak + delta * SOAK_STEP))
             elif click:
                 self.edit_curve["soak_minutes"] = self.edit_soak
+                self.save_scroll = 0
                 self.ui = UIState.CURVE_SAVE
             elif long_:
                 self._cancel_edit()
 
         # ── NOVA CURVA: SALVAR ────────────────────
         elif ui == UIState.CURVE_SAVE:
-            if click:
+            if delta:
+                # Calcula o limite de rolagem (segmentos + 1 linha de patamar)
+                total_items = len(self.edit_curve["segments"]) + 1
+                visible_items = 5
+                max_scroll = max(0, total_items - visible_items)                
+                self.save_scroll = max(0, min(max_scroll, self.save_scroll + delta))
+            elif click:
                 self._save_curve()
             elif long_:
                 self._cancel_edit()
