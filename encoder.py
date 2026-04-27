@@ -51,6 +51,10 @@ class EncoderEvent(Enum):
 # Hardware real
 # ──────────────────────────────────────────────
 
+# ──────────────────────────────────────────────
+# Hardware real
+# ──────────────────────────────────────────────
+
 class HardwareEncoder:
 
     def __init__(self, pin_clk, pin_dt, pin_sw):
@@ -59,18 +63,18 @@ class HardwareEncoder:
         self._events = []        
 
         self._encoder = RotaryEncoder(pin_clk, pin_dt, max_steps=0, wrap=False)
-        self._sw = Button(pin_sw, pull_up=True, bounce_time=0.05)
+        self._sw = Button(pin_sw, pull_up=True, bounce_time=0.05, hold_time=LONG_PRESS_MS / 1000.0)
         
-        self._sw_pressed = False
-        self._press_time = 0.0
+        self._was_held = False
 
         # Callbacks do encoder
         self._encoder.when_rotated_clockwise = self._on_rotate_cw
         self._encoder.when_rotated_counter_clockwise = self._on_rotate_ccw
 
         # Callbacks do botão
-        self._sw.when_pressed = self._on_button_press
+        self._sw.when_pressed  = self._on_button_press
         self._sw.when_released = self._on_button_release
+        self._sw.when_held     = self._on_button_held
 
     def _on_rotate_cw(self):
         with self._lock:
@@ -81,20 +85,17 @@ class HardwareEncoder:
             self._events.append(EncoderEvent.ROTATE_CCW)
 
     def _on_button_press(self):
-        self._sw_pressed = True
-        self._press_time = time.monotonic()
+        self._was_held = False
+
+    def _on_button_held(self):
+        self._was_held = True
+        with self._lock:
+            self._events.append(EncoderEvent.LONG_PRESS)
 
     def _on_button_release(self):
-        if self._sw_pressed:
-            held_ms = (time.monotonic() - self._press_time) * 1000
-            
+        if not self._was_held:
             with self._lock:
-                if held_ms >= LONG_PRESS_MS:
-                    self._events.append(EncoderEvent.LONG_PRESS)
-                else:
-                    self._events.append(EncoderEvent.CLICK)
-                    
-        self._sw_pressed = False
+                self._events.append(EncoderEvent.CLICK)
 
     def poll(self) -> list:
         with self._lock:
@@ -103,7 +104,8 @@ class HardwareEncoder:
         return events
 
     def cleanup(self):
-        pass
+        self._encoder.close()
+        self._sw.close()
 
 
 # ──────────────────────────────────────────────
