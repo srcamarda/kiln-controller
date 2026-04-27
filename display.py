@@ -179,7 +179,7 @@ def _render_selecting(draw, curves, selected):
                   font=_font(15), fill=info_color)
 
 
-def _render_confirming(draw, curve):
+def _render_confirming(draw, curve, scroll_idx=0):
     """Tela de confirmação"""
     _text_center(draw, 8, "INICIAR QUEIMA?", _font(18, bold=True), C_TEXT)
     _divider(draw, 35)
