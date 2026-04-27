@@ -351,12 +351,11 @@ def _render_cancel_confirm(draw):
     
     _text_center(draw, 85,  "Deseja realmente", _font(22), C_TEXT)
     _text_center(draw, 118, "cancelar a queima?", _font(22), C_TEXT)
-    _divider(draw, 170)
-    
-    # Ações
-    draw.text((12, 210), "Click → SIM (Parar)", font=_font(16, bold=True), fill=C_RED)
-    bbox = draw.textbbox((0, 0), "Longo → NÃO (Voltar)", font=_font(16))
-    draw.text((W - bbox[2] - 12, 210), "Longo → NÃO (Voltar)", font=_font(16), fill=C_GREEN)
+    _divider(draw, 200)    
+
+    draw.text((12, 210), "Click → SIM", font=_font(16, bold=True), fill=C_RED)
+    bbox = draw.textbbox((0, 0), "Longo → NÃO", font=_font(16))
+    draw.text((W - bbox[2] - 12, 210), "Longo → NÃO", font=_font(16), fill=C_GREEN)
 
 
 def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_new):
