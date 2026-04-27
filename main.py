@@ -124,6 +124,7 @@ class KilnApp:
         self.edit_target    = 500
         self.edit_soak      = 30
         self.editing_existing = False  # True = edição, False = nova
+        self.confirm_scroll   = 0
 
         # Resumo da última queima
         self.run_final_duration = 0.0
@@ -259,7 +260,7 @@ class KilnApp:
             self.display.show_selecting(self.curves, self.curve_sel)
 
         elif ui == UIState.CONFIRMING:
-            self.display.show_confirming(self.curves[self.curve_sel])
+            self.display.show_confirming(self.curves[self.curve_sel], scroll_idx=self.confirm_scroll)
 
         elif ui == UIState.RUNNING:
             ctrl_mode = state.mode
@@ -367,12 +368,24 @@ class KilnApp:
                 self.curve_sel = (self.curve_sel + delta) % len(self.curves)
             elif click:
                 self.ui = UIState.CONFIRMING
+                self.confirm_scroll = 0
             elif long_:
                 self.ui = UIState.MENU
 
         # ── CONFIRMING ────────────────────────────
         elif ui == UIState.CONFIRMING:
-            if click:
+            if delta:
+                curve = self.curves[self.curve_sel]
+                total_segs = len(curve["segments"]) + 1
+                num_visible = 5
+                
+                # O scroll máximo é o total de itens menos os que já cabem na tela
+                max_scroll = max(0, total_segs - num_visible)
+                
+                # Soma o delta limitando entre 0 e max_scroll
+                self.confirm_scroll = max(0, min(max_scroll, self.confirm_scroll + delta))
+                
+            elif click:
                 self._start_curve()
             elif long_:
                 self.ui = UIState.SELECTING

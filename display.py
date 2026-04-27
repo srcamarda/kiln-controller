@@ -187,19 +187,30 @@ def _render_confirming(draw, curve):
     # Nome da curva e tempo estimado
     est_time = _estimate_curve_time(curve)
     time_str = _fmt_time(est_time)
-    draw.text((12, 42), f"{curve["name"]} - {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
+    draw.text((12, 42), f"{curve['name']} - {time_str}", font=_font(18, bold=True), fill=C_ORANGE)
 
-    # Segmentos
-    y = 70
+    # Prepara a lista unificada de lines (Segmentos + Patamar final)
+    lines = []
     for i, seg in enumerate(curve["segments"]):
-        label = f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C"
-        draw.text((12, y), label, font=_font(15), fill=C_TEXT)
-        y += 22
+        lines.append(f"Seg {i+1}:  {seg['rate_per_hour']}°C/h  →  {seg['target_temp']}°C")
+    lines.append(f"Patamar:  {curve['soak_minutes']} min")
 
-    # Patamar
-    draw.text((12, y), f"Patamar:  {curve['soak_minutes']} min", font=_font(15), fill=C_TEXT)
+    # Lógica de fatiamento (Scroll)
+    num_visible = 5
+    visible = lines[scroll_idx : scroll_idx + num_visible]
+
+    y = 70
+    for line in visible:
+        draw.text((12, y), line, font=_font(15), fill=C_TEXT)
+        y += 24  # Espaçamento entre linhas
+
+    # Desenha os indicadores de scroll (Setas) na lateral direita
+    if scroll_idx > 0:
+        draw.text((W - 20, 70), "▲", font=_font(14), fill=C_BLUE)
+    if scroll_idx + num_visible < len(lines):
+        draw.text((W - 20, 166), "▼", font=_font(14), fill=C_BLUE)
     
-    # Ações
+    # Ações na barra inferior
     _divider(draw, 200)
     draw.text((12, 210), "Click → Ok", font=_font(16, bold=True), fill=C_GREEN)
     bbox = draw.textbbox((0, 0), "Longo → Cancelar", font=_font(16))
@@ -533,9 +544,9 @@ class Display:
         _render_selecting(draw, curves, selected)
         self._write(img)
 
-    def show_confirming(self, curve_name: str):
+    def show_confirming(self, curve: dict, scroll_idx: int = 0):
         img, draw = self._new_frame()
-        _render_confirming(draw, curve_name)
+        _render_confirming(draw, curve, scroll_idx)
         self._write(img)
 
     def show_preheat(self, temp: float, target: float, bank_a: bool):
