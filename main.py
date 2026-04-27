@@ -105,7 +105,15 @@ class KilnApp:
         # Configuração do Telegram        
         TOKEN = "SEU_TOKEN_AQUI"
         CHAT_IDS = ["SEU_CHAT_ID"]
-        self.notifier = TelegramNotifier(TOKEN, CHAT_IDS, status_callback=self._generate_status)
+        STOP_PASSWORD = "SUA_SENHA_AQUI"  # Defina a sua senha aqui
+        
+        self.notifier = TelegramNotifier(
+            TOKEN, 
+            CHAT_IDS, 
+            status_callback=self._generate_status,
+            stop_callback=self._remote_emergency_stop,
+            stop_password=STOP_PASSWORD
+        )
 
         # Estado da UI
         self.ui         = UIState.IDLE
@@ -625,6 +633,13 @@ class KilnApp:
         self.relays.off()
         self.controller.stop()
         print("\r[main] Emergency stop — relés desligados.")
+        
+    def _remote_emergency_stop(self):
+        """Executado remotamente pelo Telegram após confirmação de senha."""
+        print("\r[main] Desligamento de emergência acionado via Telegram.")
+        self.controller.stop()
+        self.relays.off()
+        self.ui = UIState.IDLE
 
     def _shutdown(self, *_):
         print("\r[main] Sinal de shutdown recebido.")
