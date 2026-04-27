@@ -349,8 +349,8 @@ def _render_cancel_confirm(draw):
     _text_center(draw, 10,  "⚠  ATENÇÃO  ⚠", _font(28, bold=True), C_RED)
     _divider(draw, 50)
     
-    _text_center(draw, 85,  "Deseja realmente", _font(22), C_TEXT)
-    _text_center(draw, 118, "cancelar a queima?", _font(22), C_TEXT)
+    _text_center(draw, 95,  "Deseja realmente", _font(22), C_TEXT)
+    _text_center(draw, 128, "cancelar a queima?", _font(22), C_TEXT)
     _divider(draw, 200)    
 
     draw.text((12, 210), "Click → SIM", font=_font(16, bold=True), fill=C_RED)
