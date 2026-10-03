@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 import time
 from sensor import create_sensor
 
+# Este script testa o simulador: sem SIM_TEMP=1 o create_sensor() exige hardware.
+os.environ.setdefault("SIM_TEMP", "1")
+
 sensor = create_sensor()
 
 print("\nSimulando 10s com Banco A ligado:")

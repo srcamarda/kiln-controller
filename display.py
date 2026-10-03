@@ -331,17 +331,18 @@ def _render_finished(draw, elapsed_s, max_temp, start_time_str):
     _text_center(draw, 210, "Click → Menu", _font(18, bold=True), C_TEXT)
 
 
-def _render_error(draw, message="Falha no termopar"):
+def _render_error(draw, message="Falha no termopar",
+                  detail="Relés desligados", footer="Click → Menu"):
     """Tela de erro crítico"""
     _text_center(draw, 10,  "⚠  ERRO  ⚠", _font(28, bold=True), C_RED)
     _divider(draw, 50)
-    
+
     _text_center(draw, 85,  message, _font(22), C_TEXT)
-    _text_center(draw, 118, "Relés desligados", _font(20), C_DIM)
+    _text_center(draw, 118, detail, _font(20), C_DIM)
     _divider(draw, 170)
-    
-    _text_center(draw, 185, "FORNO INATIVO", _font(16), C_DIM)    
-    _text_center(draw, 210, "Click → Menu", _font(18, bold=True), C_TEXT)
+
+    _text_center(draw, 185, "FORNO INATIVO", _font(16), C_DIM)
+    _text_center(draw, 210, footer, _font(18, bold=True), C_TEXT)
     
     
 def _render_cancel_confirm(draw):
@@ -596,9 +597,10 @@ class Display:
         _render_finished(draw, elapsed_s, max_temp, start_time_str)
         self._write(img)
 
-    def show_error(self, message: str = "Falha no termopar"):
+    def show_error(self, message: str = "Falha no termopar",
+                   detail: str = "Relés desligados", footer: str = "Click → Menu"):
         img, draw = self._new_frame()
-        _render_error(draw, message)
+        _render_error(draw, message, detail, footer)
         self._write(img)
         
     def show_cancel_confirm(self):

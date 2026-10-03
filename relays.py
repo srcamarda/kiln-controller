@@ -101,8 +101,17 @@ class SimulatedRelays:
 # ──────────────────────────────────────────────
 
 def create_relays(pin_a=13, pin_b=16):
-    if _HW_AVAILABLE:
-        print("\r[relays] Usando hardware.")
-        return HardwareRelays(pin_a, pin_b)
-    print("\r[relays] GPIO não disponível — usando simulador.")
-    return SimulatedRelays()
+    """
+    SIM_RELAYS=1 → SimulatedRelays. Caso contrário exige GPIO real:
+    sem gpiozero o programa não inicia (nada de simulação silenciosa).
+    """
+    if os.environ.get("SIM_RELAYS") == "1":
+        print("\r[relays] ATENÇÃO: simulação forçada (SIM_RELAYS=1).")
+        return SimulatedRelays()
+    if not _GPIO_AVAILABLE:
+        raise RuntimeError(
+            "gpiozero indisponível — não é possível controlar os relés. "
+            "Para rodar sem hardware use SIM_RELAYS=1."
+        )
+    print("\r[relays] Usando hardware.")
+    return HardwareRelays(pin_a, pin_b)

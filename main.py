@@ -27,11 +27,11 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from notifier      import TelegramNotifier
-from sensor        import create_sensor
+from sensor        import create_sensor, SensorInitError, SimulatedSensor
 from controller    import KilnController, ControllerMode
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
-from relays        import create_relays
+from relays        import create_relays, HardwareRelays
 from rtc           import create_rtc
 from curves_manager import (load_curves, save_curves,
                              next_curve_name, new_curve_template,
@@ -53,6 +53,7 @@ RATE_MIN        = 10
 RATE_MAX        = 300
 TARGET_MIN      = 100
 TARGET_MAX      = 1270
+SENSOR_RETRY_S  = 5      # intervalo entre tentativas de detectar o termopar
 
 MENU_OPTIONS = [
     "Curvas de Queima",
@@ -92,11 +93,15 @@ class UIState:
 class KilnApp:
 
     def __init__(self):
-        self.sensor     = create_sensor()
+        # Relés primeiro: garante saídas em "desligado" antes de qualquer coisa
+        self.relays     = create_relays()
+        self.relays.off()
+        # O sensor só é obtido em run() (_acquire_sensor), com retry e
+        # tela de erro — sem termopar válido o forno fica bloqueado.
+        self.sensor     = None
         self.controller = KilnController()
         self.display    = Display()
         self.encoder    = create_encoder()
-        self.relays     = create_relays()
         self.rtc        = create_rtc()
         self.curves     = load_curves()
         
@@ -154,6 +159,7 @@ class KilnApp:
         self.display.open()
         print("\r[main] Iniciando kiln controller.")
         try:
+            self._acquire_sensor()
             while True:
                 now = time.monotonic()
 
@@ -186,8 +192,58 @@ class KilnApp:
     # Ciclo de controle
     # ──────────────────────────────────────────────
 
+    def _acquire_sensor(self):
+        """
+        Bloqueia até obter um termopar válido (fail-closed).
+        Enquanto isso: relés desligados, tela de erro e um único alerta
+        no Telegram. Tenta novamente a cada SENSOR_RETRY_S segundos, de modo
+        que reconectar o fio/módulo libera o controlador sem reiniciar.
+        """
+        notified  = False
+        last_err  = None
+        while True:
+            self.relays.off()
+            try:
+                sensor = create_sensor()
+                if (isinstance(sensor, SimulatedSensor)
+                        and isinstance(self.relays, HardwareRelays)
+                        and os.environ.get("KILN_ALLOW_SIM_WITH_REAL_RELAYS") != "1"):
+                    raise SensorInitError(
+                        "SIM_TEMP=1 com relés reais — recusado. Use também "
+                        "SIM_RELAYS=1 ou KILN_ALLOW_SIM_WITH_REAL_RELAYS=1 (bancada)."
+                    )
+                self.sensor = sensor
+                if notified:
+                    self.notifier.send("✅ *Termopar detectado.* Controlador liberado.")
+                return
+            except SensorInitError as e:
+                err = str(e)
+                if err != last_err:
+                    print(f"\r[main] Termopar indisponível: {err}")
+                    last_err = err
+                if not notified:
+                    self.notifier.send(
+                        "🚨 *Termopar não detectado na inicialização.*\n"
+                        "Forno bloqueado, relés desligados.\n"
+                        # escapa "_"/"*" (parse_mode=Markdown descartaria a msg)
+                        "Detalhe: " + err.replace("_", "\\_").replace("*", "\\*")
+                    )
+                    notified = True
+
+            self.display.show_error("Termopar ausente",
+                                    "Relés desligados",
+                                    "Tentando novamente...")
+            # Mantém o encoder drenado durante a espera
+            deadline = time.monotonic() + SENSOR_RETRY_S
+            while time.monotonic() < deadline:
+                for _ in self.encoder.poll():
+                    pass
+                time.sleep(0.05)
+
     def _generate_status(self, is_hourly=False) -> str:
         """Gera o texto de status atual para o Telegram."""
+        if self.sensor is None:
+            return "🚨 *Termopar não detectado.*\nForno bloqueado, relés desligados."
         temp = self.sensor.temperature
         state = self.controller.state
         

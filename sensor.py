@@ -1,6 +1,11 @@
 """
 sensor.py — Leitura do termopar MAX31855 via SPI1.
 Em modo simulado, modela aquecimento/resfriamento com inércia simples.
+
+Segurança (fail-closed): o simulador só é usado com SIM_TEMP=1 explícito.
+Sem essa variável, qualquer falha ao inicializar ou validar o MAX31855
+levanta SensorInitError — o programa nunca passa a "medir" um forno
+simulado no lugar do real.
 """
 
 import time
@@ -14,9 +19,23 @@ try:
     import digitalio
     import adafruit_max31855
     _HW_AVAILABLE = True
+    _HW_IMPORT_ERROR = None
 except Exception as e:
-    print(f"\r[debug] Erro de importação: {e}")
     _HW_AVAILABLE = False
+    _HW_IMPORT_ERROR = e
+
+
+class SensorInitError(RuntimeError):
+    """Termopar indisponível ou com leitura inválida na inicialização."""
+
+
+# Faixas de plausibilidade usadas na validação inicial
+PROBE_SAMPLES        = 3
+PROBE_INTERVAL_S     = 0.2
+THERMO_MIN_C         = -20.0    # abaixo disso a leitura não faz sentido p/ o forno
+THERMO_MAX_C         = 1400.0   # acima do limite útil do tipo K neste forno
+COLD_JUNCTION_MIN_C  = -20.0    # temperatura interna do MAX31855 (ambiente da placa)
+COLD_JUNCTION_MAX_C  = 85.0
 
 
 # ──────────────────────────────────────────────
@@ -75,11 +94,12 @@ class HardwareSensor:
     DO no GPIO19, CS no GPIO20, SCK no GPIO21.
     """
 
-    def __init__(self):        
-        spi = busio.SPI(clock=board.D21, MISO=board.D19) 
-        cs = digitalio.DigitalInOut(board.D20)
-        
-        self._dev = adafruit_max31855.MAX31855(spi, cs)
+    def __init__(self, dev=None):
+        if dev is None:
+            spi = busio.SPI(clock=board.D21, MISO=board.D19)
+            cs = digitalio.DigitalInOut(board.D20)
+            dev = adafruit_max31855.MAX31855(spi, cs)
+        self._dev = dev
 
         # Buffer circular para o filtro de mediana
         self._history = []
@@ -87,8 +107,38 @@ class HardwareSensor:
         # Limite de variação real de temperatura em 0.5s
         self.MAX_PHYSICAL_JUMP = 5.0
 
-    def update(self, bank_a: bool, bank_b: bool):        
+    def update(self, bank_a: bool, bank_b: bool):
         pass
+
+    def probe(self, samples: int = PROBE_SAMPLES, interval: float = PROBE_INTERVAL_S):
+        """
+        Valida a comunicação com o MAX31855 lendo diretamente o chip
+        (sem o filtro de `temperature`, que engole exceções).
+        Levanta SensorInitError se qualquer amostra for inválida.
+        Retorna a última temperatura lida.
+        """
+        temp = None
+        for i in range(samples):
+            try:
+                temp = self._dev.temperature
+                ref  = self._dev.reference_temperature
+            except Exception as e:
+                # A lib levanta RuntimeError em termopar aberto/curto
+                raise SensorInitError(f"falha de leitura do MAX31855: {e}") from e
+
+            if temp is None or ref is None:
+                raise SensorInitError("MAX31855 retornou leitura vazia")
+            if temp == 0.0 and ref == 0.0:
+                # Palavra SPI toda em zero: MISO sem sinal / módulo desconectado
+                raise SensorInitError("leitura nula (módulo desconectado?)")
+            if not (THERMO_MIN_C <= temp <= THERMO_MAX_C):
+                raise SensorInitError(f"temperatura implausível: {temp:.1f} °C")
+            if not (COLD_JUNCTION_MIN_C <= ref <= COLD_JUNCTION_MAX_C):
+                raise SensorInitError(f"junção fria implausível: {ref:.1f} °C")
+
+            if i < samples - 1:
+                time.sleep(interval)
+        return temp
 
     @property
     def temperature(self) -> float:
@@ -131,19 +181,27 @@ class HardwareSensor:
 # ──────────────────────────────────────────────
 
 def create_sensor():
-    if _HW_AVAILABLE:
-        if os.environ.get("SIM_TEMP") == "1":
-            print("\r[sensor] Simulação forçada (SIM_TEMP=1).")
-            return SimulatedSensor()
-    
-        try:
-            sensor = HardwareSensor()
-            # Leitura de teste para confirmar comunicação
-            _ = sensor.temperature
-            print("\r[sensor] MAX31855 detectado — Usando hardware.")
-            return sensor
-        except Exception as e:
-            print(f"\r[sensor] Hardware falhou ({e}) — usando simulador.")
-    else:
-        print("\r[sensor] Bibliotecas não disponíveis — usando simulador.")
-    return SimulatedSensor()
+    """
+    Retorna o sensor a ser usado pelo controle.
+    - SIM_TEMP=1  → SimulatedSensor (apenas desenvolvimento/bancada).
+    - caso contrário → HardwareSensor validado, ou SensorInitError.
+    Nunca cai silenciosamente para o simulador.
+    """
+    if os.environ.get("SIM_TEMP") == "1":
+        print("\r[sensor] ATENÇÃO: simulação forçada (SIM_TEMP=1) — sem leitura real.")
+        return SimulatedSensor()
+
+    if not _HW_AVAILABLE:
+        raise SensorInitError(
+            f"bibliotecas do MAX31855 indisponíveis ({_HW_IMPORT_ERROR}). "
+            "Para rodar sem hardware use SIM_TEMP=1."
+        )
+
+    try:
+        sensor = HardwareSensor()
+    except Exception as e:
+        raise SensorInitError(f"não foi possível abrir o MAX31855: {e}") from e
+
+    temp = sensor.probe()
+    print(f"\r[sensor] MAX31855 detectado — usando hardware ({temp:.1f} °C).")
+    return sensor
