@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from config        import load_env_file, telegram_config
 from notifier      import TelegramNotifier
 from sensor        import create_sensor, SensorInitError, SimulatedSensor
-from controller    import KilnController, ControllerMode
+from controller    import KilnController, ControllerMode, ErrorKind
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
 from relays        import create_relays, HardwareRelays
@@ -290,12 +290,16 @@ class KilnApp:
             # Alerta de conclusão
             self.notifier.send(f"✅ *Queima Concluída!*\nDuração total: {int(self.run_final_duration // 3600)}\nTemp. Máx: {self.run_max_temp:.1f}°C")
 
-        if state.mode == ControllerMode.ERROR and self.ui not in (UIState.ERROR, UIState.IDLE):
+        # Em IDLE, falha de sensor continua silenciosa (forno parado), mas
+        # sobretemperatura / aquecimento com relés desligados sempre alarmam.
+        if (state.mode == ControllerMode.ERROR and self.ui != UIState.ERROR
+                and (self.ui != UIState.IDLE or state.error_kind != ErrorKind.SENSOR)):
             self.ui = UIState.ERROR
             self.relays.off()
-            
+
             # Alerta de erro
-            self.notifier.send(f"🚨 *ERRO CRÍTICO!*\nFalha no termopar detectada.\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
+            detail = state.error_message or "Falha no termopar detectada."
+            self.notifier.send(f"🚨 *ERRO CRÍTICO!*\n{detail}\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
 
         # Aviso automático de hora em hora
         if self.ui in (UIState.RUNNING, UIState.PREHEAT_RUN, UIState.CANCEL_CONFIRM):
@@ -365,7 +369,7 @@ class KilnApp:
             )
 
         elif ui == UIState.ERROR:
-            self.display.show_error()
+            self.display.show_error(state.error_title or "Falha no termopar")
 
         elif ui == UIState.CURVE_NEW_SEG:
             total = len(self.edit_curve["segments"]) + 1

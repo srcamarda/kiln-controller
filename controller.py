@@ -7,6 +7,11 @@ Responsabilidades:
   - Detectar overshoot de rate e desligar banco B preventivamente
   - Gerenciar progressão entre segmentos e transição para soak
   - Modo pré-aquecimento (banco A, setpoint fixo)
+  - Limites de segurança (desligam e travam em ERROR):
+      · sobretemperatura absoluta e relativa ao alvo
+      · aquecimento com relés desligados (contator colado)
+      · "não sobe" (stall) com aquecimento comandado
+      · tempo máximo por segmento e de pré-aquecimento
 """
 
 import time
@@ -30,10 +35,29 @@ PREHEAT_MIN     = 100    # °C — mínimo do modo pré-aquecimento
 PREHEAT_MAX     = 600    # °C — máximo do modo pré-aquecimento
 PREHEAT_STEP    = 10     # °C — passo do encoder no pré-aquecimento
 
+# ── Limites de segurança ──────────────────────
+OVERTEMP_ABS        = 1300.0  # °C — limite absoluto, vale em qualquer modo (inclusive parado)
+OVERTEMP_MARGIN     = 50.0    # °C — acima do alvo do modo ativo → erro
+RUNAWAY_RISE        = 30.0    # °C — subida com os dois bancos desligados → contator colado?
+STALL_LAG           = 10.0    # °C — só avalia stall se estiver ao menos isto abaixo do setpoint
+STALL_MIN_RISE      = 10.0    # °C — subida mínima esperada dentro de STALL_TIMEOUT_S
+STALL_TIMEOUT_S     = 40 * 60 # s  — tempo sem subir STALL_MIN_RISE com aquecimento ligado
+SEGMENT_TIMEOUT_FACTOR = 2.0  # × duração teórica do segmento
+SEGMENT_TIMEOUT_EXTRA_S = 60 * 60  # s — folga somada ao tempo teórico
+PREHEAT_MAX_S       = 24 * 3600    # s — duração máxima do pré-aquecimento
+
 
 # ──────────────────────────────────────────────
 # Estado do controlador
 # ──────────────────────────────────────────────
+
+class ErrorKind(Enum):
+    SENSOR   = auto()   # falha no termopar
+    OVERTEMP = auto()   # sobretemperatura
+    RUNAWAY  = auto()   # aquece com relés desligados
+    STALL    = auto()   # não sobe com aquecimento ligado
+    TIMEOUT  = auto()   # segmento/pré-aquecimento excedeu o tempo
+
 
 class ControllerMode(Enum):
     OFF      = auto()
@@ -79,6 +103,16 @@ class ControllerState:
     # Histórico para cálculo de rate
     _temp_history:    list = field(default_factory=list)  # [(timestamp, temp)]
 
+    # Erro (preenchido quando mode == ERROR)
+    error_kind:       Optional[ErrorKind] = None
+    error_title:      str            = ""   # curto, para o display
+    error_message:    str            = ""   # detalhado, para log/Telegram
+
+    # Monitoramento de segurança
+    segment_deadline: Optional[float] = None   # monotonic
+    _stall_ref:       Optional[tuple] = None   # (t, temp) desde que passou a "ficar para trás"
+    _runaway_ref:     Optional[float] = None   # menor temp com bancos desligados
+
 
 # ──────────────────────────────────────────────
 # Controlador principal
@@ -102,6 +136,8 @@ class KilnController:
         s.soak_start_time    = None
         s.mode               = ControllerMode.RAMPING
         s._temp_history      = []
+        self._reset_safety()
+        self._set_segment_deadline()
         _log(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C")
 
     def start_preheat(self, target: float, current_temp: float):
@@ -110,6 +146,8 @@ class KilnController:
         self.state.preheat_target = target
         self.state.mode           = ControllerMode.PREHEAT
         self.state.run_start_time = time.time()
+        self._reset_safety()
+        self.state.segment_deadline = time.monotonic() + PREHEAT_MAX_S
         _log(f"[ctrl] Pré-aquecimento → {target:.0f}°C")
 
     def stop(self):
@@ -118,6 +156,7 @@ class KilnController:
         s.mode   = ControllerMode.OFF
         s.bank_a = False
         s.bank_b = False
+        self._reset_safety()
         _log("[ctrl] Parado.")
 
     def set_preheat_target(self, target: float):
@@ -134,10 +173,21 @@ class KilnController:
         s = self.state
 
         if fault:
-            self._fault()
+            self._fault(ErrorKind.SENSOR, "Falha no termopar",
+                        "Falha no termopar detectada.")
+            return s
+
+        if s.mode == ControllerMode.ERROR:
+            s.bank_a = False
+            s.bank_b = False
             return s
 
         self._update_rate(temp)
+
+        # Limites que independem do modo (usam os bancos do ciclo anterior,
+        # que são os que estão efetivamente nos relés)
+        if self._check_limits(temp):
+            return s
 
         if s.mode == ControllerMode.OFF:
             s.bank_a = False
@@ -152,10 +202,11 @@ class KilnController:
         elif s.mode == ControllerMode.SOAKING:
             self._run_soaking(temp)
 
-        elif s.mode in (ControllerMode.FINISHED, ControllerMode.ERROR):
+        elif s.mode == ControllerMode.FINISHED:
             s.bank_a = False
             s.bank_b = False
 
+        self._check_stall(temp)
         return s
 
     # ── Modos internos ─────────────────────────
@@ -187,11 +238,13 @@ class KilnController:
                 s.segment_index      = next_index
                 s.segment_start_temp = temp
                 s.segment_start_time = time.monotonic()
+                self._set_segment_deadline()
             else:
                 # Todos os segmentos concluídos → inicia soak
                 _log("[ctrl] Segmentos completos → iniciando soak")
                 s.mode            = ControllerMode.SOAKING
                 s.soak_start_time = time.monotonic()
+                s.segment_deadline = None   # o soak termina sozinho
 
         self._apply_banks(temp, s.setpoint)
 
@@ -297,12 +350,117 @@ class KilnController:
             s._rate_history = s._rate_history[-self.DISPLAY_RATE_SAMPLES:]
         s.display_rate = sum(s._rate_history) / len(s._rate_history)
 
-    def _fault(self):
+    # ── Segurança ─────────────────────────────
+
+    def _reset_safety(self):
+        s = self.state
+        s.error_kind    = None
+        s.error_title   = ""
+        s.error_message = ""
+        s.segment_deadline = None
+        s._stall_ref    = None
+        s._runaway_ref  = None
+
+    def _set_segment_deadline(self):
+        """Prazo do segmento atual: duração teórica × fator + folga."""
+        s = self.state
+        seg  = s.curve["segments"][s.segment_index]
+        rate = float(seg["rate_per_hour"])
+        span = max(0.0, float(seg["target_temp"]) - s.segment_start_temp)
+        expected_s = span / rate * 3600.0 if rate > 0 else 0.0
+        s.segment_deadline = (time.monotonic()
+                              + expected_s * SEGMENT_TIMEOUT_FACTOR
+                              + SEGMENT_TIMEOUT_EXTRA_S)
+
+    def _mode_target(self) -> Optional[float]:
+        s = self.state
+        if s.mode == ControllerMode.PREHEAT:
+            return float(s.preheat_target)
+        if s.mode == ControllerMode.RAMPING:
+            return float(s.curve["segments"][s.segment_index]["target_temp"])
+        if s.mode == ControllerMode.SOAKING:
+            return float(s.curve["segments"][-1]["target_temp"])
+        return None
+
+    def _check_limits(self, temp: float) -> bool:
+        """Sobretemperatura, aquecimento com relés desligados e prazos.
+        Retorna True se entrou em ERROR."""
+        s   = self.state
+        now = time.monotonic()
+
+        # 1. Sobretemperatura absoluta — qualquer modo
+        if temp > OVERTEMP_ABS:
+            self._fault(ErrorKind.OVERTEMP, "Sobretemperatura",
+                        f"Sobretemperatura: {temp:.0f} °C acima do limite "
+                        f"absoluto de {OVERTEMP_ABS:.0f} °C.")
+            return True
+
+        # 2. Sobretemperatura relativa ao alvo do modo ativo
+        target = self._mode_target()
+        if target is not None and temp > target + OVERTEMP_MARGIN:
+            self._fault(ErrorKind.OVERTEMP, "Sobretemperatura",
+                        f"Sobretemperatura: {temp:.0f} °C, alvo {target:.0f} °C "
+                        f"(margem {OVERTEMP_MARGIN:.0f} °C).")
+            return True
+
+        # 3. Subindo com os dois bancos desligados (contator colado?)
+        if s.bank_a or s.bank_b:
+            s._runaway_ref = None
+        else:
+            if s._runaway_ref is None or temp < s._runaway_ref:
+                s._runaway_ref = temp
+            elif temp - s._runaway_ref > RUNAWAY_RISE:
+                self._fault(ErrorKind.RUNAWAY, "Aquece desligado",
+                            f"Temperatura subiu {temp - s._runaway_ref:.0f} °C "
+                            f"com os relés desligados — verificar contatores.")
+                return True
+
+        # 4. Prazo do segmento / pré-aquecimento
+        if s.segment_deadline is not None and now > s.segment_deadline:
+            if s.mode == ControllerMode.PREHEAT:
+                msg = f"Pré-aquecimento excedeu {PREHEAT_MAX_S / 3600:.0f} h."
+            else:
+                msg = (f"Segmento {s.segment_index + 1} excedeu o tempo máximo "
+                       f"(temp {temp:.0f} °C).")
+            self._fault(ErrorKind.TIMEOUT, "Tempo excedido", msg)
+            return True
+
+        return False
+
+    def _check_stall(self, temp: float):
+        """Aquecimento comandado, abaixo do setpoint, e a temperatura não sobe."""
+        s = self.state
+        demand = (s.mode in (ControllerMode.PREHEAT, ControllerMode.RAMPING,
+                             ControllerMode.SOAKING)
+                  and s.bank_a
+                  and temp < s.setpoint - STALL_LAG)
+        if not demand:
+            s._stall_ref = None
+            return
+
+        now = time.monotonic()
+        if s._stall_ref is None or temp >= s._stall_ref[1] + STALL_MIN_RISE:
+            s._stall_ref = (now, temp)
+            return
+
+        if now - s._stall_ref[0] >= STALL_TIMEOUT_S:
+            self._fault(ErrorKind.STALL, "Temp. não sobe",
+                        f"Temperatura não subiu {STALL_MIN_RISE:.0f} °C em "
+                        f"{STALL_TIMEOUT_S // 60:.0f} min com aquecimento ligado "
+                        f"(temp {temp:.0f} °C, setpoint {s.setpoint:.0f} °C). "
+                        f"Verificar resistências e termopar.")
+
+    def _fault(self, kind: ErrorKind = ErrorKind.SENSOR,
+               title: str = "Falha no termopar",
+               message: str = "Falha no termopar detectada."):
         s = self.state
         s.mode   = ControllerMode.ERROR
         s.bank_a = False
         s.bank_b = False
-        _log("[ctrl] ERRO: falha no termopar — relés desligados.")
+        s.error_kind    = kind
+        s.error_title   = title
+        s.error_message = message
+        _log(f"[ctrl] ERRO ({kind.name}): {message} Relés desligados.")
 
     # ── Helpers de consulta ────────────────────
 

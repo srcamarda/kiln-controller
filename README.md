@@ -35,3 +35,14 @@ chmod 600 .env
 ```
 
 Variáveis já definidas no ambiente (ex.: `Environment=`/`EnvironmentFile=` no systemd) têm precedência sobre o `.env`. Sem token/chat o Telegram fica desativado; sem `KILN_STOP_PASSWORD` o `/stop` remoto fica desativado.
+
+## Limites de segurança (software)
+
+Qualquer um destes desliga os relés e trava em ERRO (tela + alerta no Telegram); os valores ficam no topo do `controller.py`:
+
+- **Sobretemperatura**: acima de 1300 °C em qualquer modo (inclusive parado), ou 50 °C acima do alvo do modo ativo.
+- **Aquece desligado**: subida de 30 °C com os dois bancos desligados — indica contator colado.
+- **Temp. não sobe**: com aquecimento ligado e mais de 10 °C abaixo do setpoint, a temperatura não sobe 10 °C em 40 min (resistência queimada, termopar fora do lugar).
+- **Tempo excedido**: segmento acima de 2× a duração teórica + 1 h; pré-aquecimento acima de 24 h.
+
+Esses limites não substituem um limitador de sobretemperatura **em hardware**, em série com os contatores: se o Raspberry Pi travar ou um contator colar, o software não consegue desligar o forno.

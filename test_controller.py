@@ -1,6 +1,6 @@
 """
 test_controller.py — Simula o controlador passo a passo com tempo mockado.
-Cada passo representa 60 segundos de forno (1 minuto por iteração).
+Cada passo representa 5 segundos de forno (o mesmo período do loop real).
 """
 
 import sys, os, json, time
@@ -24,9 +24,11 @@ from controller import KilnController, ControllerMode
 # ── Simulador de temperatura simples ──────────────────────────────────────────
 
 class StepSensor:
-    GAIN_A_ONLY  = 1.5   # °C/s
-    GAIN_A_AND_B = 2.5   # °C/s
-    LOSS         = 0.2   # °C/s resfriamento passivo
+    # Ganhos realistas (~3,6 °C/min só A, ~7,2 °C/min A+B). Com os ganhos
+    # antigos (150 °C por passo de 60 s) a sobretemperatura disparava.
+    GAIN_A_ONLY  = 0.06  # °C/s
+    GAIN_A_AND_B = 0.12  # °C/s
+    LOSS         = 0.02  # °C/s resfriamento passivo
     AMBIENT      = 25.0
 
     def __init__(self):
@@ -52,7 +54,7 @@ with open(os.path.join(os.path.dirname(__file__), "curves.json")) as f:
 
 # ── Executa simulação ──────────────────────────────────────────────────────────
 
-def run_simulation(curve, step_seconds=60, max_steps=2000):
+def run_simulation(curve, step_seconds=5, max_steps=30 * 720):
     global _sim_time
     _sim_time = 0.0
 
@@ -74,7 +76,7 @@ def run_simulation(curve, step_seconds=60, max_steps=2000):
         sensor.step(state.bank_a, state.bank_b, dt=step_seconds)
         _sim_time += step_seconds
 
-        if step % 5 == 0 or state.mode != prev_mode:
+        if step % max(1, 900 // step_seconds) == 0 or state.mode != prev_mode:
             elapsed_h = _sim_time / 3600
             soak_r    = controller.soak_remaining_seconds()
             mode_str  = state.mode.name
@@ -102,5 +104,5 @@ def run_simulation(curve, step_seconds=60, max_steps=2000):
 
 
 for curve in curves:
-    run_simulation(curve, step_seconds=60, max_steps=2000)
+    run_simulation(curve)
     print()
