@@ -26,6 +26,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from config        import load_env_file, telegram_config
 from notifier      import TelegramNotifier
 from sensor        import create_sensor, SensorInitError, SimulatedSensor
 from controller    import KilnController, ControllerMode
@@ -108,17 +109,17 @@ class KilnApp:
         # Controle de notificações de hora em hora
         self.last_hourly_announcement = 0
         
-        # Configuração do Telegram        
-        TOKEN = "SEU_TOKEN_AQUI"
-        CHAT_IDS = ["SEU_CHAT_ID"]
-        STOP_PASSWORD = "SUA_SENHA_AQUI"  # Defina a sua senha aqui
-        
+        # Configuração do Telegram — segredos vêm do ambiente / .env
+        # (ver config.py e .env.example; nunca colocar no código)
+        load_env_file()
+        token, chat_ids, stop_password = telegram_config()
+
         self.notifier = TelegramNotifier(
-            TOKEN, 
-            CHAT_IDS, 
+            token,
+            chat_ids,
             status_callback=self._generate_status,
-            stop_callback=self._remote_emergency_stop,
-            stop_password=STOP_PASSWORD
+            stop_callback=self._remote_emergency_stop if stop_password else None,
+            stop_password=stop_password
         )
 
         # Estado da UI

@@ -8,9 +8,10 @@ import urllib.request
 import urllib.parse
 import json
 import time
+import hmac
 
 class TelegramNotifier:
-    def __init__(self, token: str, chat_ids, status_callback=None, stop_callback=None, stop_password="admin"):
+    def __init__(self, token: str, chat_ids, status_callback=None, stop_callback=None, stop_password=None):
         self.token = token.strip() if token else ""
         
         if isinstance(chat_ids, str):
@@ -22,7 +23,10 @@ class TelegramNotifier:
 
         self.status_callback = status_callback
         self.stop_callback = stop_callback
-        self.stop_password = stop_password
+        # Sem senha configurada o /stop fica desativado (nunca usar senha padrão)
+        self.stop_password = stop_password or None
+        if not self.stop_password:
+            self.stop_callback = None
         
         # Dicionário para rastrear quem pediu /stop: {chat_id: timestamp_do_pedido}
         self._pending_stops = {}
@@ -87,7 +91,8 @@ class TelegramNotifier:
                                 del self._pending_stops[chat_id] # Limpa o estado
                                 
                                 if elapsed <= 60: # 60 segundos de timeout
-                                    if text == self.stop_password:
+                                    if hmac.compare_digest(text.encode("utf-8"),
+                                                           self.stop_password.encode("utf-8")):
                                         if self.stop_callback:
                                             self.stop_callback()
                                         self.send("🚨 *DESLIGAMENTO EXECUTADO!*\nOs relés foram desativados e a queima foi interrompida com sucesso.", specific_chat_id=chat_id)

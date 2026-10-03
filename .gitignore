@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.log
 kiln-env/
+
+# Segredos (ver .env.example)
+.env
