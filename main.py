@@ -27,9 +27,12 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from config        import load_env_file, telegram_config
+import firing_state
+import sdnotify
 from notifier      import TelegramNotifier
 from sensor        import create_sensor, SensorInitError, SimulatedSensor
-from controller    import KilnController, ControllerMode, ErrorKind
+from controller    import (KilnController, ControllerMode, ErrorKind,
+                            RUNAWAY_RISE, OVERTEMP_ABS)
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
 from relays        import create_relays, HardwareRelays
@@ -55,6 +58,12 @@ RATE_MAX        = 300
 TARGET_MIN      = 100
 TARGET_MAX      = 1270
 SENSOR_RETRY_S  = 5      # intervalo entre tentativas de detectar o termopar
+
+# Retomada da queima após reinício (queda de energia, travamento, watchdog)
+STATE_SAVE_S            = 60        # grava o estado da queima a cada N s
+MAX_RESUME_DOWNTIME_S   = 4 * 3600  # fora do ar por mais que isso → não retoma
+MAX_RESUMES             = 3         # retomadas permitidas dentro da janela abaixo
+RESUME_WINDOW_S         = 3600      #   (mais que isso indica problema recorrente)
 
 MENU_OPTIONS = [
     "Curvas de Queima",
@@ -152,6 +161,12 @@ class KilnApp:
         self._last_control  = 0.0
         self._last_display  = 0.0
 
+        # Persistência da queima (retomada após reinício)
+        self._last_save     = 0.0
+        self._saved_key     = None    # (modo, segmento) da última gravação
+        self._state_saved   = False
+        self._resume_times  = []      # horários (epoch do RTC) das retomadas
+
         # Shutdown limpo
         signal.signal(signal.SIGTERM, self._shutdown)
         signal.signal(signal.SIGINT,  self._shutdown)
@@ -159,10 +174,13 @@ class KilnApp:
     def run(self):
         self.display.open()
         print("\r[main] Iniciando kiln controller.")
+        sdnotify.ready()
         try:
             self._acquire_sensor()
+            self._try_resume()
             while True:
                 now = time.monotonic()
+                sdnotify.watchdog_ping()
 
                 # ── Leitura do encoder ─────────────────────────
                 for event in self.encoder.poll():
@@ -237,6 +255,7 @@ class KilnApp:
             # Mantém o encoder drenado durante a espera
             deadline = time.monotonic() + SENSOR_RETRY_S
             while time.monotonic() < deadline:
+                sdnotify.watchdog_ping()
                 for _ in self.encoder.poll():
                     pass
                 time.sleep(0.05)
@@ -278,6 +297,7 @@ class KilnApp:
         state = self.controller.update(temp, fault)
         self.sensor.update(state.bank_a, state.bank_b)
         self.relays.set(state.bank_a, state.bank_b)
+        self._persist_firing(temp)
 
         # Transições automáticas do controlador
         if state.mode == ControllerMode.FINISHED and self.ui in (UIState.RUNNING, UIState.CANCEL_CONFIRM):
@@ -619,7 +639,112 @@ class KilnApp:
     def _stop_run(self):
         self.controller.stop()
         self.relays.off()
+        self._clear_firing()
         self.ui = UIState.IDLE
+
+    # ──────────────────────────────────────────────
+    # Persistência / retomada da queima
+    # ──────────────────────────────────────────────
+
+    def _wall_time(self) -> float:
+        """Epoch pelo RTC (DS3231) — o relógio do sistema pode estar errado no boot."""
+        try:
+            return self.rtc.now().timestamp()
+        except Exception:
+            return time.time()
+
+    def _persist_firing(self, temp: float, force: bool = False):
+        """Grava o estado da queima periodicamente e ao mudar de segmento/modo.
+        Remove o arquivo quando o controlador deixa de estar ativo
+        (concluída, cancelada, ERRO)."""
+        ctrl = self.controller
+        if not ctrl.is_active():
+            if self._state_saved:
+                self._clear_firing()
+            return
+
+        s   = ctrl.state
+        key = (s.mode, s.segment_index)
+        now = time.monotonic()
+        if not force and key == self._saved_key and now - self._last_save < STATE_SAVE_S:
+            return
+
+        snap = ctrl.snapshot(temp)
+        snap.update({
+            "saved_at":      self._wall_time(),
+            "run_max_temp":  self.run_max_temp,
+            "run_start_str": self.run_start_str,
+            "resume_times":  self._resume_times,
+        })
+        try:
+            firing_state.save(snap)
+            self._state_saved = True
+            self._saved_key   = key
+            self._last_save   = now
+        except OSError as e:
+            print(f"\r[main] Falha ao gravar estado da queima: {e}")
+
+    def _clear_firing(self):
+        firing_state.clear()
+        self._state_saved  = False
+        self._saved_key    = None
+        self._resume_times = []
+
+    def _try_resume(self):
+        """
+        Chamado no boot, com o termopar já validado. Se havia queima em
+        andamento, retoma — salvo sinais de problema, quando trava em ERRO
+        com o motivo e avisa no Telegram.
+        """
+        snap = firing_state.load()
+        if not snap:
+            return
+
+        temp      = self.sensor.temperature
+        now_wall  = self._wall_time()
+        saved_at  = snap.get("saved_at")
+        downtime  = max(0.0, now_wall - saved_at) if saved_at else 0.0
+        last_temp = snap.get("last_temp", temp)
+        recent    = [t for t in snap.get("resume_times", [])
+                     if now_wall - t < RESUME_WINDOW_S]
+
+        problem = None
+        if downtime > MAX_RESUME_DOWNTIME_S:
+            problem = (f"controlador ficou {downtime / 3600:.1f} h fora do ar "
+                       f"(limite {MAX_RESUME_DOWNTIME_S / 3600:.0f} h)")
+        elif len(recent) >= MAX_RESUMES:
+            problem = (f"{len(recent)} reinícios na última hora — "
+                       f"possível falha recorrente")
+        elif temp > OVERTEMP_ABS or temp > last_temp + RUNAWAY_RISE:
+            problem = (f"temperatura subiu de {last_temp:.0f} °C para {temp:.0f} °C "
+                       f"com o controlador fora do ar — verificar contatores")
+
+        name = (snap.get("curve") or {}).get("name", "pré-aquecimento")
+        if problem:
+            self._clear_firing()
+            msg = f"Queima '{name}' interrompida e NÃO retomada: {problem}."
+            print(f"\r[main] {msg}")
+            self.controller.fail(ErrorKind.INTERRUPTED, "Queima interrompida", msg)
+            self.ui = UIState.ERROR
+            self.notifier.send(f"🚨 *Queima não retomada após reinício.*\n{msg}\n"
+                               f"Temp. atual: {temp:.1f}°C. Relés desligados.")
+            return
+
+        desc = self.controller.resume(snap, temp, downtime)
+        self._resume_times = recent + [now_wall]
+        self.run_max_temp  = max(snap.get("run_max_temp", temp), temp)
+        self.run_start_str = snap.get("run_start_str", "")
+        self.preheat_target = snap.get("preheat_target", self.preheat_target)
+        self.last_hourly_announcement = int(self.controller.run_elapsed_seconds() // 3600)
+        self.ui = (UIState.PREHEAT_RUN if self.controller.state.mode == ControllerMode.PREHEAT
+                   else UIState.RUNNING)
+        self._persist_firing(temp, force=True)
+
+        print(f"\r[main] Queima retomada após {downtime / 60:.0f} min fora do ar: {desc}")
+        self.notifier.send(f"♻️ *Queima retomada após reinício.*\n"
+                           f"Fora do ar: {downtime / 60:.0f} min\n"
+                           f"Temp. atual: {temp:.1f}°C (era {last_temp:.1f}°C)\n"
+                           f"Retomando: {desc}")
 
     def _begin_new_curve(self):
         name = next_curve_name(self.curves)
@@ -706,6 +831,9 @@ class KilnApp:
         self.ui = UIState.MENU
 
     def _emergency_stop(self):
+        # Usado no encerramento do processo (SIGTERM/Ctrl+C). NÃO apaga o
+        # estado da queima: um reinício do serviço/Pi retoma de onde parou.
+        # Para abandonar a queima, cancele pelo encoder ou pelo /stop.
         self.relays.off()
         self.controller.stop()
         print("\r[main] Emergency stop — relés desligados.")
@@ -715,6 +843,7 @@ class KilnApp:
         print("\r[main] Desligamento de emergência acionado via Telegram.")
         self.controller.stop()
         self.relays.off()
+        self._clear_firing()
         self.ui = UIState.IDLE
 
     def _shutdown(self, *_):

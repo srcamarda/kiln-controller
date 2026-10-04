@@ -5,3 +5,6 @@ kiln-env/
 
 # Segredos (ver .env.example)
 .env
+
+# Estado da queima em andamento (firing_state.py)
+state/

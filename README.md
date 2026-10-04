@@ -46,3 +46,35 @@ Qualquer um destes desliga os relés e trava em ERRO (tela + alerta no Telegram)
 - **Tempo excedido**: segmento acima de 2× a duração teórica + 1 h; pré-aquecimento acima de 24 h.
 
 Esses limites não substituem um limitador de sobretemperatura **em hardware**, em série com os contatores: se o Raspberry Pi travar ou um contator colar, o software não consegue desligar o forno.
+
+## Execução como serviço (systemd)
+
+No Pi, na pasta do projeto (depois de criar o `.env`):
+
+```
+sudo sh deploy/install.sh
+```
+
+O script instala `kiln-controller.service` (sobe no boot, sem depender de rede), ativa o watchdog de hardware do Pi e reinicia o serviço. Log: `journalctl -u kiln-controller -f`.
+
+Camadas de proteção:
+
+- **Watchdog do serviço** (`WatchdogSec=30`): se o loop principal travar, o systemd mata e reinicia o processo.
+- **Watchdog de hardware** (`RuntimeWatchdogSec=14`): se o Pi/kernel travar, o Pi reinicia sozinho.
+- **Relés desligados ao sair**: `deploy/relays-off.sh` roda sempre que o processo termina (inclusive morto pelo watchdog) e força GPIO13/16 em HIGH.
+
+## Retomada da queima após reinício
+
+Durante uma queima o estado é gravado (a cada 60 s e a cada troca de segmento) em `/var/lib/kiln-controller/firing.json` (ou `./state/` rodando à mão). Após queda de energia, travamento ou reinício, o controlador retoma automaticamente e avisa no Telegram:
+
+- a rampa recomeça da temperatura atual; se o forno esfriou abaixo de segmentos já concluídos, volta para o segmento correspondente;
+- no patamar, continua com o tempo restante (se esfriou mais de 30 °C, volta a rampar o último segmento e faz o patamar completo).
+
+**Não retoma** (trava em ERRO "Queima interrompida" e avisa) quando:
+
+- o termopar não é detectado (o controlador fica bloqueado até resolver);
+- ficou mais de 4 h fora do ar;
+- houve 3 retomadas na última hora (falha recorrente);
+- a temperatura subiu mais de 30 °C com o controlador fora do ar (contator colado?).
+
+Queima concluída, cancelada (encoder ou `/stop`) ou em ERRO apaga o estado. `systemctl stop`/reboot **não** apaga: a queima é retomada no próximo start. Para abandonar uma queima sem o encoder: `sudo rm /var/lib/kiln-controller/firing.json` com o serviço parado.

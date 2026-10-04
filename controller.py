@@ -46,6 +46,9 @@ SEGMENT_TIMEOUT_FACTOR = 2.0  # × duração teórica do segmento
 SEGMENT_TIMEOUT_EXTRA_S = 60 * 60  # s — folga somada ao tempo teórico
 PREHEAT_MAX_S       = 24 * 3600    # s — duração máxima do pré-aquecimento
 
+# ── Retomada após reinício ────────────────────
+SOAK_RESUME_BAND    = 30.0    # °C — no soak, se esfriou mais que isso volta a rampar
+
 
 # ──────────────────────────────────────────────
 # Estado do controlador
@@ -57,6 +60,7 @@ class ErrorKind(Enum):
     RUNAWAY  = auto()   # aquece com relés desligados
     STALL    = auto()   # não sobe com aquecimento ligado
     TIMEOUT  = auto()   # segmento/pré-aquecimento excedeu o tempo
+    INTERRUPTED = auto()  # queima interrompida e não retomada após reinício
 
 
 class ControllerMode(Enum):
@@ -83,6 +87,7 @@ class ControllerState:
 
     # Pré-aquecimento
     preheat_target:   float          = 200.0
+    preheat_start_time: Optional[float] = None   # monotonic
 
     # Saídas
     bank_a:           bool           = False
@@ -147,7 +152,8 @@ class KilnController:
         self.state.mode           = ControllerMode.PREHEAT
         self.state.run_start_time = time.time()
         self._reset_safety()
-        self.state.segment_deadline = time.monotonic() + PREHEAT_MAX_S
+        self.state.preheat_start_time = time.monotonic()
+        self.state.segment_deadline = self.state.preheat_start_time + PREHEAT_MAX_S
         _log(f"[ctrl] Pré-aquecimento → {target:.0f}°C")
 
     def stop(self):
@@ -158,6 +164,94 @@ class KilnController:
         s.bank_b = False
         self._reset_safety()
         _log("[ctrl] Parado.")
+
+    # ── Persistência / retomada ────────────────
+
+    RESUMABLE_MODES = (ControllerMode.PREHEAT, ControllerMode.RAMPING,
+                       ControllerMode.SOAKING)
+
+    def is_active(self) -> bool:
+        return self.state.mode in self.RESUMABLE_MODES
+
+    def snapshot(self, temp: float) -> Optional[dict]:
+        """Estado mínimo para retomar a queima após reinício (sem monotonic)."""
+        s = self.state
+        if not self.is_active():
+            return None
+        now = time.monotonic()
+        snap = {
+            "mode":           s.mode.name,
+            "curve":          s.curve,
+            "segment_index":  s.segment_index,
+            "preheat_target": s.preheat_target,
+            "run_elapsed_s":  self.run_elapsed_seconds(),
+            "last_temp":      temp,
+        }
+        if s.mode == ControllerMode.SOAKING and s.soak_start_time is not None:
+            snap["soak_elapsed_s"] = now - s.soak_start_time
+        if s.mode == ControllerMode.PREHEAT and s.preheat_start_time is not None:
+            snap["preheat_elapsed_s"] = now - s.preheat_start_time
+        return snap
+
+    def resume(self, snap: dict, temp: float, downtime_s: float = 0.0) -> str:
+        """
+        Retoma a partir de um snapshot. A rampa recomeça da temperatura atual
+        (o setpoint é reconstruído a partir dela); se o forno esfriou abaixo
+        de segmentos já concluídos, volta para o segmento correspondente para
+        respeitar as taxas programadas. Retorna uma descrição para log/alerta.
+        """
+        s   = self.state
+        now = time.monotonic()
+        mode = ControllerMode[snap["mode"]]
+
+        self._reset_safety()
+        s._temp_history  = []
+        s._rate_history  = []
+        s.current_rate   = 0.0
+        s.display_rate   = 0.0
+        s.bank_b_suppressed = False
+        s.run_start_time = time.time() - snap.get("run_elapsed_s", 0.0) - max(0.0, downtime_s)
+        s.preheat_target = snap.get("preheat_target", s.preheat_target)
+        s.curve          = snap.get("curve")
+        s.soak_start_time = None
+
+        if mode == ControllerMode.PREHEAT:
+            elapsed = snap.get("preheat_elapsed_s", 0.0)
+            s.mode = ControllerMode.PREHEAT
+            s.preheat_start_time = now - elapsed
+            s.segment_deadline   = s.preheat_start_time + PREHEAT_MAX_S
+            desc = f"pré-aquecimento a {s.preheat_target:.0f} °C"
+            _log(f"[ctrl] Retomando {desc}")
+            return desc
+
+        segs = s.curve["segments"]
+        final_target = float(segs[-1]["target_temp"])
+
+        if mode == ControllerMode.SOAKING and temp >= final_target - SOAK_RESUME_BAND:
+            s.mode            = ControllerMode.SOAKING
+            s.segment_index   = len(segs) - 1
+            s.soak_start_time = now - snap.get("soak_elapsed_s", 0.0)
+            desc = f"patamar em {final_target:.0f} °C ({self.soak_remaining_seconds() / 60:.0f} min restantes)"
+            _log(f"[ctrl] Retomando {desc}")
+            return desc
+
+        idx = len(segs) - 1 if mode == ControllerMode.SOAKING else int(snap["segment_index"])
+        idx = max(0, min(idx, len(segs) - 1))
+        while idx > 0 and temp < float(segs[idx - 1]["target_temp"]) - HYSTERESIS:
+            idx -= 1
+
+        s.mode               = ControllerMode.RAMPING
+        s.segment_index      = idx
+        s.segment_start_temp = temp
+        s.segment_start_time = now
+        self._set_segment_deadline()
+        desc = f"segmento {idx + 1}/{len(segs)} a partir de {temp:.0f} °C"
+        _log(f"[ctrl] Retomando {desc}")
+        return desc
+
+    def fail(self, kind: "ErrorKind", title: str, message: str):
+        """Coloca o controlador em ERROR (travado) por motivo externo."""
+        self._fault(kind, title, message)
 
     def set_preheat_target(self, target: float):
         target = max(PREHEAT_MIN, min(PREHEAT_MAX, target))

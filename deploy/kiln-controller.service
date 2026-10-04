@@ -1,0 +1,36 @@
+# Serviço do controlador do forno — instalado por deploy/install.sh
+# (@USER@ e @DIR@ são substituídos na instalação)
+
+[Unit]
+Description=Controlador do forno ceramico
+# Não depende de rede: o forno precisa funcionar sem internet
+After=local-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+# Os grupos gpio/spi/i2c/video do usuário (install.sh adiciona) dão acesso ao hardware
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@PYTHON@ @DIR@/main.py
+Environment=PYTHONUNBUFFERED=1
+
+# Estado da queima em /var/lib/kiln-controller (retomada após reinício)
+StateDirectory=kiln-controller
+StateDirectoryMode=0700
+
+# Watchdog de software: se o loop principal parar de responder por 30 s,
+# o systemd mata o processo e reinicia (a queima é retomada).
+WatchdogSec=30
+TimeoutStartSec=60
+TimeoutStopSec=15
+Restart=always
+RestartSec=3
+
+# Garante os relés DESLIGADOS sempre que o processo terminar, inclusive
+# se ele for morto pelo watchdog (sem chance de rodar o finally do Python).
+ExecStopPost=+@DIR@/deploy/relays-off.sh
+
+[Install]
+WantedBy=multi-user.target
