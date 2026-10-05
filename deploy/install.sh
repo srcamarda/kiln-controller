@@ -43,6 +43,14 @@ if [ -f "$CFG" ] && ! grep -q "^dtparam=watchdog=on" "$CFG"; then
     echo "Adicionado dtparam=watchdog=on em $CFG (vale após reiniciar)."
 fi
 
+# Relés desligados desde o início do boot: o firmware do Pi coloca GPIO13/16
+# como saída em HIGH antes do Linux subir (HL-52S é ativo em LOW). Sem isso,
+# os pinos nascem como entrada com pull-down (= nível baixo) até o serviço iniciar.
+if [ -f "$CFG" ] && ! grep -q "^gpio=13,16=op,dh" "$CFG"; then
+    echo "gpio=13,16=op,dh" >> "$CFG"
+    echo "Adicionado gpio=13,16=op,dh em $CFG (vale após reiniciar)."
+fi
+
 # .env com permissão restrita
 if [ -f "$DIR/.env" ]; then
     chown "$USER_NAME" "$DIR/.env"
