@@ -37,6 +37,13 @@ THERMO_MAX_C         = 1400.0   # acima do limite útil do tipo K neste forno
 COLD_JUNCTION_MIN_C  = -20.0    # temperatura interna do MAX31855 (ambiente da placa)
 COLD_JUNCTION_MAX_C  = 85.0
 
+# Leitura em execução
+SAMPLE_INTERVAL_S    = 0.5    # uma leitura SPI a cada 0,5 s, não importa quem consulta
+MEDIAN_WINDOW        = 10     # amostras no filtro de mediana (≈ 5 s)
+MAX_PHYSICAL_JUMP    = 5.0    # °C — desvio da mediana considerado leitura espúria
+JUMP_RESET_COUNT     = 6      # rejeições seguidas (≈ 3 s) → aceita o novo patamar
+FAULT_TOLERANCE_S    = 15.0   # s sem leitura válida até declarar falha (3 ciclos de controle)
+
 
 # ──────────────────────────────────────────────
 # Simulador
@@ -83,6 +90,13 @@ class SimulatedSensor:
     def fault(self) -> bool:
         return False
 
+    @property
+    def fault_reason(self) -> str:
+        return ""
+
+    def poll(self):
+        pass
+
 
 # ──────────────────────────────────────────────
 # Hardware real
@@ -101,79 +115,131 @@ class HardwareSensor:
             dev = adafruit_max31855.MAX31855(spi, cs)
         self._dev = dev
 
-        # Buffer circular para o filtro de mediana
-        self._history = []
-        
-        # Limite de variação real de temperatura em 0.5s
-        self.MAX_PHYSICAL_JUMP = 5.0
+        # Estado da leitura temporizada (ver _sample)
+        self._history      = []      # amostras válidas aceitas (mediana)
+        self._last_sample  = None    # monotonic da última tentativa de leitura
+        self._last_good    = None    # monotonic da última leitura válida
+        self._fail_count   = 0       # leituras inválidas seguidas
+        self._fail_reason  = ""
+        self._reject_count = 0       # saltos rejeitados seguidos
+        self._reject_last  = None
 
     def update(self, bank_a: bool, bank_b: bool):
         pass
 
     def probe(self, samples: int = PROBE_SAMPLES, interval: float = PROBE_INTERVAL_S):
         """
-        Valida a comunicação com o MAX31855 lendo diretamente o chip
-        (sem o filtro de `temperature`, que engole exceções).
+        Valida a comunicação com o MAX31855 lendo diretamente o chip.
         Levanta SensorInitError se qualquer amostra for inválida.
-        Retorna a última temperatura lida.
+        Retorna a última temperatura lida e semeia o filtro com ela.
         """
         temp = None
         for i in range(samples):
-            try:
-                temp = self._dev.temperature
-                ref  = self._dev.reference_temperature
-            except Exception as e:
-                # A lib levanta RuntimeError em termopar aberto/curto
-                raise SensorInitError(f"falha de leitura do MAX31855: {e}") from e
-
-            if temp is None or ref is None:
-                raise SensorInitError("MAX31855 retornou leitura vazia")
-            if temp == 0.0 and ref == 0.0:
-                # Palavra SPI toda em zero: MISO sem sinal / módulo desconectado
-                raise SensorInitError("leitura nula (módulo desconectado?)")
-            if not (THERMO_MIN_C <= temp <= THERMO_MAX_C):
-                raise SensorInitError(f"temperatura implausível: {temp:.1f} °C")
-            if not (COLD_JUNCTION_MIN_C <= ref <= COLD_JUNCTION_MAX_C):
-                raise SensorInitError(f"junção fria implausível: {ref:.1f} °C")
-
+            temp, err = self._read_once(check_ref=True)
+            if err:
+                raise SensorInitError(err)
             if i < samples - 1:
                 time.sleep(interval)
+        now = time.monotonic()
+        self._history     = [temp]
+        self._last_good   = now
+        self._last_sample = now
         return temp
+
+    # ── Leitura ───────────────────────────────
+
+    def _read_once(self, check_ref: bool = False):
+        """
+        Uma leitura do chip. Retorna (temp, None) se válida ou (None, motivo).
+        A lib Adafruit levanta RuntimeError em termopar aberto/curto.
+        A junção fria só é lida na validação inicial ou se temp == 0,0.
+        """
+        try:
+            temp = self._dev.temperature
+        except Exception as e:
+            return None, f"falha de leitura do MAX31855: {e}"
+        if temp is None:
+            return None, "MAX31855 retornou leitura vazia"
+        if check_ref or temp == 0.0:
+            # Só neste caso lê a junção fria: palavra SPI toda zero = MISO sem sinal
+            try:
+                ref = self._dev.reference_temperature
+            except Exception as e:
+                return None, f"falha de leitura do MAX31855: {e}"
+            if ref == 0.0:
+                return None, "leitura nula (módulo desconectado?)"
+            if ref is None or not (COLD_JUNCTION_MIN_C <= ref <= COLD_JUNCTION_MAX_C):
+                return None, f"junção fria implausível: {ref}"
+        if not (THERMO_MIN_C <= temp <= THERMO_MAX_C):
+            return None, f"temperatura implausível: {temp:.1f} °C"
+        return temp, None
+
+    def poll(self):
+        """Faz no máximo uma leitura a cada SAMPLE_INTERVAL_S."""
+        now = time.monotonic()
+        if self._last_sample is not None and now - self._last_sample < SAMPLE_INTERVAL_S:
+            return
+        self._last_sample = now
+        self._sample(now)
+
+    def _sample(self, now):
+        temp, err = self._read_once()
+
+        if err:
+            if self._fail_count == 0:
+                print(f"\r[sensor] Leitura inválida: {err}")
+            self._fail_count += 1
+            self._fail_reason = err
+            return
+
+        if self._fail_count:
+            print(f"\r[sensor] Leitura normalizada após {self._fail_count} falha(s).")
+        self._fail_count = 0
+        self._last_good  = now
+
+        # Filtro anti-salto: rejeita desvios grandes da mediana, mas aceita o
+        # novo valor se ele persistir (ex.: reconexão), em vez de travar na
+        # leitura velha. Amostras rejeitadas não entram no histórico.
+        if len(self._history) >= 3:
+            median = statistics.median(self._history)
+            if abs(temp - median) > MAX_PHYSICAL_JUMP:
+                consistent = (self._reject_last is not None
+                              and abs(temp - self._reject_last) <= MAX_PHYSICAL_JUMP)
+                self._reject_count = self._reject_count + 1 if consistent else 1
+                self._reject_last  = temp
+                if self._reject_count < JUMP_RESET_COUNT:
+                    return
+                print(f"\r[sensor] Novo patamar aceito: {median:.1f} → {temp:.1f} °C")
+                self._history = []
+        self._reject_count = 0
+        self._reject_last  = None
+
+        self._history.append(temp)
+        if len(self._history) > MEDIAN_WINDOW:
+            self._history.pop(0)
+
+    # ── Interface usada pelo controle ─────────
 
     @property
     def temperature(self) -> float:
-        try:
-            val = self._dev.temperature
-            if val is not None:
-                # Se já temos um histórico sólido, validamos a física
-                if len(self._history) >= 3:
-                    current_median = statistics.median(self._history)
-                    
-                    # Se o salto for fisicamente impossível, ignoramos a leitura falsa
-                    if abs(val - current_median) > self.MAX_PHYSICAL_JUMP:
-                        val = current_median 
-                
-                self._history.append(val)
-                
-                # Mantém 10 amostras
-                if len(self._history) > 10:
-                    self._history.pop(0)
-                
-                return statistics.median(self._history)
-        except Exception:
-            pass
-            
-        # Se falhar a comunicação, mantém a última temperatura válida
+        """Mediana das últimas leituras válidas. Durante falhas transitórias
+        mantém o último valor; use `fault` para saber se ainda é confiável."""
+        self.poll()
         if self._history:
             return statistics.median(self._history)
         return 0.0
 
     @property
     def fault(self) -> bool:
-        try:
-            return self._dev.temperature is None
-        except Exception:
+        """True se não houve leitura válida nos últimos FAULT_TOLERANCE_S."""
+        self.poll()
+        if self._last_good is None or not self._history:
             return True
+        return time.monotonic() - self._last_good > FAULT_TOLERANCE_S
+
+    @property
+    def fault_reason(self) -> str:
+        return self._fail_reason if self.fault else ""
 
 
 # ──────────────────────────────────────────────

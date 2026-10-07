@@ -181,6 +181,7 @@ class KilnApp:
             while True:
                 now = time.monotonic()
                 sdnotify.watchdog_ping()
+                self.sensor.poll()   # leitura temporizada do termopar (0,5 s)
 
                 # ── Leitura do encoder ─────────────────────────
                 for event in self.encoder.poll():
@@ -295,6 +296,9 @@ class KilnApp:
                 self.run_max_temp = temp
 
         state = self.controller.update(temp, fault)
+        if fault and state.error_kind == ErrorKind.SENSOR and self.sensor.fault_reason:
+            state.error_message = (f"Falha no termopar por mais de 15 s: "
+                                   f"{self.sensor.fault_reason}.")
         self.sensor.update(state.bank_a, state.bank_b)
         self.relays.set(state.bank_a, state.bank_b)
         self._persist_firing(temp)
