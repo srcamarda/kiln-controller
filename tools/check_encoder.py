@@ -1,3 +1,7 @@
+"""
+tools/check_encoder.py — Mostra os pulsos do encoder (teste de bancada no Pi).
+Uso: python3 tools/check_encoder.py   (Ctrl+C para sair)
+"""
 import RPi.GPIO as GPIO
 import time
 

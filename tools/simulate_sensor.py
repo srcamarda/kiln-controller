@@ -1,10 +1,10 @@
 """
-test_sensor.py — Testa o simulador por 10 segundos.
+tools/simulate_sensor.py — Testa o simulador por 10 segundos.
 Mostra a temperatura subindo com banco A ligado.
 """
 
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import time
 from sensor import create_sensor

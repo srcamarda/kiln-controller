@@ -1,10 +1,10 @@
 """
-test_controller.py — Simula o controlador passo a passo com tempo mockado.
+tools/simulate_curves.py — Simula o controlador passo a passo com tempo mockado.
 Cada passo representa 5 segundos de forno (o mesmo período do loop real).
 """
 
 import sys, os, json, time
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 # ── Mock de tempo ──────────────────────────────────────────────────────────────
 _sim_time = 0.0
@@ -49,7 +49,7 @@ class StepSensor:
 
 
 # ── Carrega curvas ─────────────────────────────────────────────────────────────
-with open(os.path.join(os.path.dirname(__file__), "curves.json")) as f:
+with open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."), "curves.json")) as f:
     curves = json.load(f)
 
 # ── Executa simulação ──────────────────────────────────────────────────────────

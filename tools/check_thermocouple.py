@@ -1,3 +1,7 @@
+"""
+tools/check_thermocouple.py — Lê o MAX31855 direto em loop (teste de bancada no Pi).
+Uso: python3 tools/check_thermocouple.py   (Ctrl+C para sair)
+"""
 import time
 import board
 import busio

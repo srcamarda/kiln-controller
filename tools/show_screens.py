@@ -1,5 +1,5 @@
 """
-test_display.py — Percorre todas as telas do display por 3s cada.
+tools/show_screens.py — Percorre todas as telas do display por 3s cada.
 Caso a tela seja especificada na chamada, exibe apenas uma
 Requer acesso ao /dev/fb1 (rode com sudo ou grupo video).
 """
@@ -8,12 +8,12 @@ import sys, os, time, json
 
 screen = sys.argv[1].lower() if len(sys.argv) > 1 else None
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from display import Display
 from controller import ControllerState, ControllerMode
 
-CURVES_PATH = os.path.join(os.path.dirname(__file__), "curves.json")
+CURVES_PATH = os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."), "curves.json")
 with open(CURVES_PATH) as f:
     curves = json.load(f)
 
