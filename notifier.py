@@ -222,10 +222,18 @@ class TelegramNotifier:
                 return
             if hmac.compare_digest(text.encode("utf-8"), self.stop_password.encode("utf-8")):
                 self._stop_fails.pop(chat_id, None)
-                if self.stop_callback:
-                    self.stop_callback()
-                self.send(f"🚨 {b('DESLIGAMENTO EXECUTADO!')}\nOs relés foram desativados "
-                          f"e a queima foi interrompida.", specific_chat_id=chat_id, critical=True)
+                try:
+                    result = self.stop_callback() if self.stop_callback else None
+                except Exception as e:
+                    print(f"\r[notifier] Erro ao executar /stop: {e!r}")
+                    self.send(f"🚨 {b('FALHA AO EXECUTAR O DESLIGAMENTO!')}\n{esc(e)}\n"
+                              f"Desligue o forno manualmente.", specific_chat_id=chat_id,
+                              critical=True)
+                    return
+                detail = esc(result) if isinstance(result, str) else \
+                    "Os relés foram desativados e a queima foi interrompida."
+                self.send(f"🚨 {b('DESLIGAMENTO EXECUTADO!')}\n{detail}",
+                          specific_chat_id=chat_id, critical=True)
             else:
                 fails = self._stop_fails.get(chat_id, 0) + 1
                 self._stop_fails[chat_id] = fails

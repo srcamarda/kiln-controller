@@ -22,6 +22,8 @@ Estados da UI:
 
 import time
 import signal
+import queue
+import threading
 import sys
 import os
 
@@ -60,6 +62,7 @@ TARGET_STEP     = 10     # °C por tick do encoder
 SOAK_STEP       = 5      # minutos por tick do encoder
 # RATE_MIN/MAX, TARGET_MIN/MAX e SOAK_MIN/MAX vêm de curves_manager
 SENSOR_RETRY_S  = 5      # intervalo entre tentativas de detectar o termopar
+REMOTE_TIMEOUT_S = 10    # espera máxima pela execução de um comando remoto no loop
 
 # Retomada da queima após reinício (queda de energia, travamento, watchdog)
 STATE_SAVE_S            = 60        # grava o estado da queima a cada N s
@@ -125,14 +128,19 @@ class KilnApp:
         
         # Configuração do Telegram — segredos vêm do ambiente / .env
         # (ver config.py e .env.example; nunca colocar no código)
+        # Comandos remotos (Telegram) são executados pelo loop principal,
+        # nunca direto da thread do Telegram (ver _call_in_main)
+        self._commands    = queue.Queue()
+        self._main_thread = threading.get_ident()
+
         load_env_file()
         token, chat_ids, stop_password = telegram_config()
 
         self.notifier = TelegramNotifier(
             token,
             chat_ids,
-            status_callback=self._generate_status,
-            stop_callback=self._remote_emergency_stop if stop_password else None,
+            status_callback=self._remote_status,
+            stop_callback=self._remote_stop_request if stop_password else None,
             stop_password=stop_password
         )
         if self._curve_warnings:
@@ -195,6 +203,7 @@ class KilnApp:
             while True:
                 now = time.monotonic()
                 sdnotify.watchdog_ping()
+                self._process_commands()   # /stop, /status vindos do Telegram
                 self.sensor.poll()   # leitura temporizada do termopar (0,5 s)
 
                 # ── Leitura do encoder ─────────────────────────
@@ -273,6 +282,7 @@ class KilnApp:
             deadline = time.monotonic() + SENSOR_RETRY_S
             while time.monotonic() < deadline:
                 sdnotify.watchdog_ping()
+                self._process_commands()
                 for _ in self.encoder.poll():
                     pass
                 time.sleep(0.05)
@@ -962,14 +972,77 @@ class KilnApp:
         self.controller.stop()
         print("\r[main] Emergency stop — relés desligados.")
         
-    def _remote_emergency_stop(self):
-        """Executado remotamente pelo Telegram após confirmação de senha."""
+    # ──────────────────────────────────────────────
+    # Comandos remotos (Telegram)
+    # ──────────────────────────────────────────────
+
+    def _call_in_main(self, fn, timeout: float = None):
+        """
+        Executa `fn` na thread do loop principal e devolve o resultado.
+        Chamado pela thread do Telegram; o loop drena a fila a cada iteração
+        (~20 ms). Levanta TimeoutError se o loop não executar a tempo.
+        """
+        if threading.get_ident() == getattr(self, "_main_thread", None) \
+                or not hasattr(self, "_commands"):
+            return fn()
+        timeout = REMOTE_TIMEOUT_S if timeout is None else timeout
+        done, box = threading.Event(), {}
+
+        def job():
+            try:
+                box["result"] = fn()
+            except Exception as e:
+                box["error"] = e
+            finally:
+                done.set()
+
+        self._commands.put(job)
+        if not done.wait(timeout):
+            raise TimeoutError(f"loop principal não respondeu em {timeout:.0f} s")
+        if "error" in box:
+            raise box["error"]
+        return box.get("result")
+
+    def _process_commands(self):
+        """Executa os comandos remotos pendentes (no loop principal)."""
+        while True:
+            try:
+                job = self._commands.get_nowait()
+            except queue.Empty:
+                return
+            job()
+
+    def _remote_status(self) -> str:
+        """Callback do /status (thread do Telegram)."""
+        try:
+            return self._call_in_main(self._generate_status)
+        except TimeoutError:
+            return (f"⚠️ {b('O controlador não respondeu')} em {REMOTE_TIMEOUT_S} s "
+                    f"— possível travamento (o watchdog deve reiniciá-lo).")
+
+    def _remote_stop_request(self) -> str:
+        """Callback do /stop após a senha (thread do Telegram)."""
+        try:
+            return self._call_in_main(self._remote_emergency_stop)
+        except TimeoutError:
+            # Loop travado: corta os relés direto desta thread como último recurso
+            self.relays.off()
+            print("\r[main] /stop: loop principal não respondeu — relés desligados direto.")
+            return ("O controlador não respondeu; os relés foram desligados diretamente. "
+                    "Verifique o forno — o watchdog deve reiniciar o programa.")
+
+    def _remote_emergency_stop(self) -> str:
+        """Executado no loop principal após /stop + senha. Retorna o texto da resposta."""
         print("\r[main] Desligamento de emergência acionado via Telegram.")
+        self.relays.off()
+        if not self.controller.is_active():
+            return "Nenhuma queima em andamento — relés confirmados desligados."
         self.controller.stop()
         self.relays.off()
         self._clear_firing()
         self.flog.end("parada remota (/stop)", self._wall_dt())
         self.ui = UIState.IDLE
+        return "Os relés foram desligados e a queima foi interrompida."
 
     def _shutdown(self, *_):
         print("\r[main] Sinal de shutdown recebido.")
