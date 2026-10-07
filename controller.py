@@ -110,7 +110,7 @@ class ControllerState:
     # Histórico para suavização do rate exibido
     _rate_history:    list = field(default_factory=list)  # últimas N leituras de rate
 
-    # Horário de início da queima (epoch)
+    # Início da queima (time.monotonic — imune a ajustes de relógio/NTP/RTC)
     run_start_time:   Optional[float] = None
 
     # Histórico para cálculo de rate
@@ -148,7 +148,7 @@ class KilnController:
         s.segment_index      = 0
         s.segment_start_temp = start_temp
         s.segment_start_time = time.monotonic()
-        s.run_start_time     = time.time()
+        s.run_start_time     = time.monotonic()
         s.soak_start_time    = None
         s.mode               = ControllerMode.RAMPING
         self._reset_rate()
@@ -161,7 +161,7 @@ class KilnController:
         target = max(PREHEAT_MIN, min(PREHEAT_MAX, target))
         self.state.preheat_target = target
         self.state.mode           = ControllerMode.PREHEAT
-        self.state.run_start_time = time.time()
+        self.state.run_start_time = time.monotonic()
         self._reset_rate()
         self._reset_safety()
         self.state.preheat_start_time = time.monotonic()
@@ -218,7 +218,8 @@ class KilnController:
 
         self._reset_safety()
         self._reset_rate()
-        s.run_start_time = time.time() - snap.get("run_elapsed_s", 0.0) - max(0.0, downtime_s)
+        s.run_start_time = (time.monotonic() - snap.get("run_elapsed_s", 0.0)
+                            - max(0.0, downtime_s))
         s.preheat_target = snap.get("preheat_target", s.preheat_target)
         s.curve          = snap.get("curve")
         s.soak_start_time = None
@@ -269,7 +270,7 @@ class KilnController:
 
     def update(self, temp: float, fault: bool) -> ControllerState:
         """
-        Deve ser chamado a cada ciclo do loop principal (~1s).
+        Deve ser chamado a cada ciclo de controle (main.LOOP_HZ = 0,2 Hz → 5 s).
         Retorna o estado atualizado com bank_a e bank_b definidos.
         """
         s = self.state
@@ -613,7 +614,7 @@ class KilnController:
         s = self.state
         if s.run_start_time is None:
             return 0.0
-        return time.time() - s.run_start_time
+        return time.monotonic() - s.run_start_time
 
     def segment_progress(self) -> float:
         """Progresso geral da curva de 0.0 a 1.0."""

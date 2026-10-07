@@ -37,6 +37,7 @@ import sdnotify
 from notifier      import TelegramNotifier, esc, b
 from sensor        import create_sensor, SensorInitError, SimulatedSensor
 from controller    import (KilnController, ControllerMode, ErrorKind,
+                            PREHEAT_MIN, PREHEAT_MAX, PREHEAT_STEP,
                             RUNAWAY_RISE, OVERTEMP_ABS)
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
@@ -54,9 +55,7 @@ from curves_manager import (load_curves, save_curves,
 
 LOOP_HZ         = 0.2    # ciclos por segundo do loop de controle
 DISPLAY_HZ      = 2      # atualizações de display por segundo
-PREHEAT_MIN     = 100
-PREHEAT_MAX     = 600
-PREHEAT_STEP    = 10
+# PREHEAT_MIN/MAX/STEP vêm de controller (fonte única)
 RATE_STEP       = 10     # °C/h por tick do encoder
 TARGET_STEP     = 10     # °C por tick do encoder
 SOAK_STEP       = 5      # minutos por tick do encoder

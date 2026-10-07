@@ -91,3 +91,37 @@ As curvas ficam em `curves.json` (ou no caminho de `KILN_CURVES_FILE`). Limites:
 - Gravação atômica: uma queda de energia durante o salvamento não corrompe o arquivo; a versão anterior fica em `curves.json.bak`.
 - Na inicialização, curvas inválidas (ex.: editadas à mão com erro) são ignoradas com aviso no console e no Telegram, em vez de impedir o programa de subir. Se o arquivo estiver corrompido, usa o `.bak`.
 - Erros ao salvar pelo encoder aparecem na tela.
+
+## Registro das queimas
+
+Cada queima (ou pré-aquecimento) gera dois arquivos em `/var/log/kiln-controller/` (ou `./logs/` rodando à mão):
+
+- `AAAAMMDD-HHMMSS_<curva>.csv` — uma linha a cada 5 s: temperatura filtrada e bruta, setpoint, segmento, relés A/B, corte do B por subida rápida, taxa de subida, falhas de leitura; mais linhas de evento (troca de segmento, patamar, retomada, erro, fim). Depois do fim, continua 1 linha/min durante o resfriamento até 100 °C.
+- `AAAAMMDD-HHMMSS_<curva>.json` — curva completa, parâmetros de controle e segurança vigentes, retomadas e um resumo (temp. máxima, comutações dos relés, taxa real de cada segmento, desvio no patamar).
+
+Uma queima retomada após reinício continua no mesmo arquivo. São mantidas as 100 queimas mais recentes.
+
+Para analisar no PC:
+
+```
+scp pi@<ip-do-pi>:/var/log/kiln-controller/AAAAMMDD-HHMMSS_* .
+python tools/plot_firing.py AAAAMMDD-HHMMSS_<curva>.csv            # resumo + gráfico
+python tools/plot_firing.py AAAAMMDD-HHMMSS_<curva>.csv --png g.png
+```
+
+## Testes e ferramentas
+
+Testes automáticos (rodam no PC, sem hardware):
+
+```
+python3 -m unittest
+```
+
+Ferramentas em `tools/`:
+
+- `plot_firing.py` — resumo e gráfico de uma queima registrada (PC).
+- `simulate_curves.py` — simula todas as curvas e imprime a evolução (PC).
+- `simulate_sensor.py` — demonstra o termopar simulado (PC).
+- `check_thermocouple.py` — lê o MAX31855 em loop (Pi, bancada).
+- `check_encoder.py` — mostra os pulsos do encoder (Pi, bancada).
+- `show_screens.py` — percorre as telas do display (Pi; `python3 tools/show_screens.py [tela]`).
