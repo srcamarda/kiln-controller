@@ -1,6 +1,6 @@
 """
 test_remote_commands.py — Comandos do Telegram executados pelo loop principal.
-Rodar:  python3 -m unittest test_remote_commands -v
+Rodar:  python3 -m unittest tests.test_remote_commands -v
 """
 
 import os
@@ -12,7 +12,7 @@ import types
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import firing_state
 import notifier as n

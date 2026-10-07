@@ -1,6 +1,6 @@
 """
 test_sensor_runtime.py — Leitura em execução do MAX31855 (filtro e tolerância a falhas).
-Rodar:  python3 -m unittest test_sensor_runtime -v
+Rodar:  python3 -m unittest tests.test_sensor_runtime -v
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import sensor
 

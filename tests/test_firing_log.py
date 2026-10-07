@@ -1,6 +1,6 @@
 """
 test_firing_log.py — Registro de queimas (CSV + JSON), inclusive resfriamento.
-Rodar:  python3 -m unittest test_firing_log -v
+Rodar:  python3 -m unittest tests.test_firing_log -v
 """
 
 import csv
@@ -13,7 +13,7 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import controller as c
 import firing_log

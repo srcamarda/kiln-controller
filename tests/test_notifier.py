@@ -1,6 +1,6 @@
 """
 test_notifier.py — Formatação, entrega com retry e comando /stop do Telegram.
-Rodar:  python3 -m unittest test_notifier -v
+Rodar:  python3 -m unittest tests.test_notifier -v
 """
 
 import io
@@ -11,7 +11,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import notifier as n
 from notifier import TelegramNotifier, esc, b, to_plain

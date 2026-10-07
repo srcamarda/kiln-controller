@@ -1,6 +1,6 @@
 """
 test_hysteresis.py — Histerese com memória e tempos mínimos de comutação.
-Rodar:  python3 -m unittest test_hysteresis -v
+Rodar:  python3 -m unittest tests.test_hysteresis -v
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import controller as c
 from controller import KilnController, ControllerMode

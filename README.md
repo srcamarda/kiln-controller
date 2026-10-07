@@ -111,10 +111,11 @@ python tools/plot_firing.py AAAAMMDD-HHMMSS_<curva>.csv --png g.png
 
 ## Testes e ferramentas
 
-Testes automáticos (rodam no PC, sem hardware):
+Testes automáticos em `tests/` (rodam no PC, sem hardware), a partir da raiz do projeto:
 
 ```
-python3 -m unittest
+python3 -m unittest                          # todos
+python3 -m unittest tests.test_curves -v     # um arquivo
 ```
 
 Ferramentas em `tools/`:

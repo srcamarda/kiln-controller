@@ -4,7 +4,7 @@ test_simulation.py — Todas as curvas do curves.json numa simulação realista
 Garante que concluem sem disparar limites de segurança e sem sobressinal
 excessivo. A versão "visual" (tabela) é tools/simulate_curves.py.
 
-Rodar:  python3 -m unittest test_simulation -v
+Rodar:  python3 -m unittest tests.test_simulation -v
 """
 
 import os
@@ -13,7 +13,7 @@ import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import controller as c
 from controller import KilnController, ControllerMode

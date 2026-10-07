@@ -1,6 +1,6 @@
 """
 test_resume.py — Persistência e retomada da queima após reinício.
-Rodar:  python3 -m unittest test_resume -v
+Rodar:  python3 -m unittest tests.test_resume -v
 """
 
 import os
@@ -12,7 +12,7 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import controller as c
 import firing_state

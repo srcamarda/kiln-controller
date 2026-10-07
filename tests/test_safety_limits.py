@@ -1,6 +1,6 @@
 """
 test_safety_limits.py — Limites de segurança do controlador (crítico 3).
-Rodar:  python3 -m unittest test_safety_limits -v
+Rodar:  python3 -m unittest tests.test_safety_limits -v
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import controller as c
 from controller import KilnController, ControllerMode, ErrorKind

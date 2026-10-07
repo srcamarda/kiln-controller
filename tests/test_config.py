@@ -1,6 +1,6 @@
 """
 test_config.py — Carregamento de segredos via ambiente/.env.
-Rodar:  python3 -m unittest test_config -v
+Rodar:  python3 -m unittest tests.test_config -v
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import config
 from notifier import TelegramNotifier
