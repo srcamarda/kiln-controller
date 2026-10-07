@@ -83,3 +83,11 @@ Durante uma queima o estado é gravado (a cada 60 s e a cada troca de segmento) 
 - a temperatura subiu mais de 30 °C com o controlador fora do ar (contator colado?).
 
 Queima concluída, cancelada (encoder ou `/stop`) ou em ERRO apaga o estado. `systemctl stop`/reboot **não** apaga: a queima é retomada no próximo start. Para abandonar uma queima sem o encoder: `sudo rm /var/lib/kiln-controller/firing.json` com o serviço parado.
+
+## Curvas
+
+As curvas ficam em `curves.json` (ou no caminho de `KILN_CURVES_FILE`). Limites: taxa 10–300 °C/h, temperatura 100–1270 °C (crescente entre segmentos), até 12 segmentos, patamar 1–240 min.
+
+- Gravação atômica: uma queda de energia durante o salvamento não corrompe o arquivo; a versão anterior fica em `curves.json.bak`.
+- Na inicialização, curvas inválidas (ex.: editadas à mão com erro) são ignoradas com aviso no console e no Telegram, em vez de impedir o programa de subir. Se o arquivo estiver corrompido, usa o `.bak`.
+- Erros ao salvar pelo encoder aparecem na tela.

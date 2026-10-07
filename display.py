@@ -345,6 +345,34 @@ def _render_error(draw, message="Falha no termopar",
     _text_center(draw, 210, footer, _font(18, bold=True), C_TEXT)
     
     
+def _wrap(draw, text, font, max_w):
+    """Quebra o texto em linhas que caibam em max_w pixels."""
+    lines, cur = [], ""
+    for word in str(text).split():
+        trial = f"{cur} {word}".strip()
+        if draw.textbbox((0, 0), trial, font=font)[2] <= max_w or not cur:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _render_message(draw, title, text, footer="Click → Voltar"):
+    """Aviso genérico (ex.: curva inválida, nenhuma curva cadastrada)."""
+    _text_center(draw, 10, title, _font(24, bold=True), C_ORANGE)
+    _divider(draw, 50)
+    font = _font(18)
+    y = 68
+    for line in _wrap(draw, text, font, W - 24)[:5]:
+        _text_center(draw, y, line, font, C_TEXT)
+        y += 26
+    _divider(draw, 200)
+    _text_center(draw, 210, footer, _font(18, bold=True), C_TEXT)
+
+
 def _render_cancel_confirm(draw):
     """Tela de alerta para confirmar o cancelamento da queima"""
     _text_center(draw, 10,  "⚠  ATENÇÃO  ⚠", _font(28, bold=True), C_RED)
@@ -603,6 +631,11 @@ class Display:
         _render_error(draw, message, detail, footer)
         self._write(img)
         
+    def show_message(self, title: str, text: str, footer: str = "Click → Voltar"):
+        img, draw = self._new_frame()
+        _render_message(draw, title, text, footer)
+        self._write(img)
+
     def show_cancel_confirm(self):
         img, draw = self._new_frame()
         _render_cancel_confirm(draw)

@@ -21,7 +21,7 @@ import firing_state
 from controller import KilnController, ControllerMode, ErrorKind
 from firing_log import FiringLog, COLUMNS
 
-CURVE = {"name": "Teste_Log*", "soak_minutes": 10,
+CURVE = {"id": "teste_log", "name": "Teste_Log*", "soak_minutes": 10,
          "segments": [{"rate_per_hour": 300, "target_temp": 300}]}
 
 

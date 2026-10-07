@@ -11,3 +11,7 @@ state/
 
 # Registros das queimas rodando a mão (firing_log.py)
 logs/
+
+# Backup/temporário do arquivo de curvas (curves_manager.py)
+curves.json.bak
+curves.json.tmp

@@ -17,6 +17,7 @@ Estados da UI:
   CURVE_SAVE      → confirma salvar curva
   CURVE_EDIT_LIST → seleciona curva para editar
   CURVE_EDIT_SEG  → edita segmento existente
+  MESSAGE         → aviso (curva inválida, sem curvas...) — click volta
 """
 
 import time
@@ -41,7 +42,9 @@ from relays        import create_relays, HardwareRelays
 from rtc           import create_rtc
 from curves_manager import (load_curves, save_curves,
                              next_curve_name, new_curve_template,
-                             validate_curve)
+                             validate_curve,
+                             RATE_MIN, RATE_MAX, TARGET_MIN, TARGET_MAX,
+                             SOAK_MIN, SOAK_MAX)
 
 # ──────────────────────────────────────────────
 # Constantes
@@ -55,10 +58,7 @@ PREHEAT_STEP    = 10
 RATE_STEP       = 10     # °C/h por tick do encoder
 TARGET_STEP     = 10     # °C por tick do encoder
 SOAK_STEP       = 5      # minutos por tick do encoder
-RATE_MIN        = 10
-RATE_MAX        = 300
-TARGET_MIN      = 100
-TARGET_MAX      = 1270
+# RATE_MIN/MAX, TARGET_MIN/MAX e SOAK_MIN/MAX vêm de curves_manager
 SENSOR_RETRY_S  = 5      # intervalo entre tentativas de detectar o termopar
 
 # Retomada da queima após reinício (queda de energia, travamento, watchdog)
@@ -96,6 +96,7 @@ class UIState:
     CURVE_SAVE     = "curve_save"
     CURVE_EDIT_LIST= "curve_edit_list"
     CURVE_EDIT_SEG = "curve_edit_seg"
+    MESSAGE        = "message"
 
 
 # ──────────────────────────────────────────────
@@ -115,7 +116,9 @@ class KilnApp:
         self.display    = Display()
         self.encoder    = create_encoder()
         self.rtc        = create_rtc()
-        self.curves     = load_curves()
+        self.curves, self._curve_warnings = load_curves()
+        for w in self._curve_warnings:
+            print(f"\r[curvas] {w}")
         
         # Controle de notificações de hora em hora
         self.last_hourly_announcement = 0
@@ -132,9 +135,15 @@ class KilnApp:
             stop_callback=self._remote_emergency_stop if stop_password else None,
             stop_password=stop_password
         )
+        if self._curve_warnings:
+            self.notifier.send("⚠️ " + b("Problema no arquivo de curvas:") + "\n" +
+                               "\n".join(esc(w) for w in self._curve_warnings))
 
         # Estado da UI
         self.ui         = UIState.IDLE
+        self.msg_title  = ""
+        self.msg_text   = ""
+        self.msg_return = UIState.MENU
         self.menu_sel   = 0
         self.curve_sel  = 0
         self.edit_sel   = 0
@@ -462,6 +471,9 @@ class KilnApp:
         elif ui == UIState.CURVE_EDIT_LIST:
             self.display.show_curve_list_edit(self.curves, self.edit_sel)
 
+        elif ui == UIState.MESSAGE:
+            self.display.show_message(self.msg_title, self.msg_text)
+
     # ──────────────────────────────────────────────
     # Eventos do encoder
     # ──────────────────────────────────────────────
@@ -603,8 +615,8 @@ class KilnApp:
         # ── NOVA CURVA: PATAMAR ───────────────────
         elif ui == UIState.CURVE_SOAK:
             if delta:
-                self.edit_soak = max(1,
-                    min(240, self.edit_soak + delta * SOAK_STEP))
+                self.edit_soak = max(SOAK_MIN,
+                    min(SOAK_MAX, self.edit_soak + delta * SOAK_STEP))
             elif click:
                 self.edit_curve["soak_minutes"] = self.edit_soak
                 self.save_scroll = 0
@@ -634,12 +646,28 @@ class KilnApp:
             elif long_:
                 self.ui = UIState.MENU
 
+        # ── AVISO ─────────────────────────────────
+        elif ui == UIState.MESSAGE:
+            if click or long_:
+                self.ui = self.msg_return
+
     # ──────────────────────────────────────────────
     # Ações
+
+    def _show_message(self, title: str, text: str, return_to):
+        self.msg_title  = title
+        self.msg_text   = text
+        self.msg_return = return_to
+        self.ui         = UIState.MESSAGE
     # ──────────────────────────────────────────────
 
     def _menu_confirm(self):
         sel = self.menu_sel
+        if sel in (0, 3) and not self.curves:
+            self._show_message("SEM CURVAS",
+                               "Nenhuma curva válida cadastrada. Use Nova Curva.",
+                               UIState.MENU)
+            return
         if sel == 0:   # Curvas de queima
             self.curve_sel = 0
             self.ui = UIState.SELECTING
@@ -653,6 +681,10 @@ class KilnApp:
 
     def _start_curve(self):
         curve = self.curves[self.curve_sel]
+        err = validate_curve(curve)
+        if err:   # defesa extra: curvas já são validadas na carga e ao salvar
+            self._show_message("CURVA INVÁLIDA", err, UIState.SELECTING)
+            return
         self.run_max_temp  = self.sensor.temperature
         self.run_start_str = self.rtc.now().strftime("%H:%M")
         self.controller.start_curve(curve, self.sensor.temperature)
@@ -829,7 +861,7 @@ class KilnApp:
 
     def _begin_new_curve(self):
         name = next_curve_name(self.curves)
-        self.edit_curve       = new_curve_template(name)
+        self.edit_curve       = new_curve_template(name, self.curves)
         self.edit_seg_idx     = 0
         self.edit_field       = 0
         self.edit_rate        = 100
@@ -891,18 +923,29 @@ class KilnApp:
         err = validate_curve(self.edit_curve)
         if err:
             print(f"\r[main] Curva inválida: {err}")
+            self._show_message("CURVA INVÁLIDA", err, UIState.CURVE_SAVE)
             return
 
+        new_list = list(self.curves)
         if self.editing_existing:
-            # Substitui curva original
-            for i, c in enumerate(self.curves):
+            # Substitui a curva original (ids são únicos — garantido na carga)
+            for i, c in enumerate(new_list):
                 if c["id"] == self.edit_curve["id"]:
-                    self.curves[i] = self.edit_curve
+                    new_list[i] = self.edit_curve
                     break
+            else:
+                new_list.append(self.edit_curve)
         else:
-            self.curves.append(self.edit_curve)
+            new_list.append(self.edit_curve)
 
-        save_curves(self.curves)
+        try:
+            save_curves(new_list)
+        except (ValueError, OSError) as e:
+            print(f"\r[main] Falha ao salvar curvas: {e}")
+            self._show_message("ERRO AO SALVAR", str(e), UIState.CURVE_SAVE)
+            return
+
+        self.curves = new_list
         print(f"\r[main] Curva '{self.edit_curve['name']}' salva.")
         self.edit_curve = None
         self.ui = UIState.IDLE

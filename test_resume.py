@@ -19,6 +19,7 @@ import firing_state
 from controller import KilnController, ControllerMode, ErrorKind
 
 CURVE = {
+    "id": "teste",
     "name": "teste",
     "soak_minutes": 20,
     "segments": [
