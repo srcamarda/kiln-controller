@@ -94,6 +94,14 @@ class SimulatedSensor:
     def fault_reason(self) -> str:
         return ""
 
+    @property
+    def last_raw(self):
+        return self.temperature
+
+    @property
+    def fail_count(self) -> int:
+        return 0
+
     def poll(self):
         pass
 
@@ -123,6 +131,7 @@ class HardwareSensor:
         self._fail_reason  = ""
         self._reject_count = 0       # saltos rejeitados seguidos
         self._reject_last  = None
+        self.last_raw      = None    # última leitura bruta válida (None se a última falhou)
 
     def update(self, bank_a: bool, bank_b: bool):
         pass
@@ -184,6 +193,7 @@ class HardwareSensor:
 
     def _sample(self, now):
         temp, err = self._read_once()
+        self.last_raw = temp
 
         if err:
             if self._fail_count == 0:
@@ -240,6 +250,10 @@ class HardwareSensor:
     @property
     def fault_reason(self) -> str:
         return self._fail_reason if self.fault else ""
+
+    @property
+    def fail_count(self) -> int:
+        return self._fail_count
 
 
 # ──────────────────────────────────────────────

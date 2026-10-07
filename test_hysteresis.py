@@ -133,6 +133,7 @@ class TestBancoB(unittest.TestCase):
         self.clock.t += 600
         self.k.update(700, False)          # liga A e B
         self.k.state.current_rate = 1000   # subindo rápido demais
+        self.k.state.rate_valid   = True
         with mock.patch.object(self.k, "_update_rate"):
             self.clock.t += 5
             s = self.k.update(705, False)
@@ -141,6 +142,38 @@ class TestBancoB(unittest.TestCase):
             self.clock.t += c.MIN_ON_S
             s = self.k.update(705, False)
             self.assertFalse(s.bank_b)
+
+
+class TestRateMinimo(unittest.TestCase):
+    """Logo após iniciar, poucas amostras não podem suprimir o banco B."""
+
+    def setUp(self):
+        self.clock = Clock()
+        p = mock.patch.object(c, "time", self.clock)
+        p.start()
+        self.addCleanup(p.stop)
+        self.k = KilnController()
+        curve = {"name": "t", "soak_minutes": 10,
+                 "segments": [{"rate_per_hour": 100, "target_temp": 1000}]}
+        self.k.start_curve(curve, 700)
+
+    def test_rate_invalido_no_inicio(self):
+        temp = 700.0
+        for _ in range(int(c.RATE_MIN_WINDOW / 5) - 1):
+            self.clock.t += 5
+            temp += 1.0                      # 720 °C/h, bem acima de 120 °C/h
+            s = self.k.update(temp, False)
+            self.assertFalse(s.rate_valid)
+            self.assertFalse(s.bank_b_suppressed)
+
+    def test_rate_valido_depois_da_janela(self):
+        temp = 700.0
+        for _ in range(int(c.RATE_MIN_WINDOW / 5) + 2):
+            self.clock.t += 5
+            temp += 1.0
+            s = self.k.update(temp, False)
+        self.assertTrue(s.rate_valid)
+        self.assertTrue(s.bank_b_suppressed)
 
 
 if __name__ == "__main__":

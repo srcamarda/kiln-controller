@@ -168,11 +168,15 @@ class TestMainResume(unittest.TestCase):
         app._saved_key = None
         app._state_saved = False
         app._resume_times = []
+        from firing_log import FiringLog
+        app.flog = FiringLog(os.path.join(self.dir, "logs"))
+        app.curves = [CURVE]
+        app.curve_sel = 0
         return app
 
     def _save_running(self, temp=700, **extra):
         a = self._app(temp)
-        a.controller.start_curve(CURVE, 25)
+        a._start_curve()
         a.run_start_str = "08:00"
         a.run_max_temp = temp
         a._persist_firing(temp, force=True)
@@ -192,6 +196,12 @@ class TestMainResume(unittest.TestCase):
         self.assertEqual(app.run_start_str, "08:00")
         self.assertIn("retomada", app.notifier.send.call_args.args[0])
         self.assertEqual(len(firing_state.load()["resume_times"]), 1)
+        # o registro da queima continua no mesmo arquivo, com evento de retomada
+        log = firing_state.load()["log_file"]
+        self.assertTrue(log and os.path.exists(log))
+        app.flog.close()
+        with open(log, encoding="utf-8") as f:
+            self.assertIn("RETOMADA", f.read())
 
     def test_nao_retoma_apos_muito_tempo(self):
         self._save_running()

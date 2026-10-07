@@ -20,6 +20,10 @@ Environment=PYTHONUNBUFFERED=1
 StateDirectory=kiln-controller
 StateDirectoryMode=0700
 
+# Registros das queimas (CSV + JSON) em /var/log/kiln-controller
+LogsDirectory=kiln-controller
+LogsDirectoryMode=0755
+
 # Watchdog de software: se o loop principal parar de responder por 30 s,
 # o systemd mata o processo e reinicia (a queima é retomada).
 WatchdogSec=30

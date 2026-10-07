@@ -8,3 +8,6 @@ kiln-env/
 
 # Estado da queima em andamento (firing_state.py)
 state/
+
+# Registros das queimas rodando a mão (firing_log.py)
+logs/
