@@ -31,7 +31,7 @@ import firing_state
 import controller as ctrl_cfg
 from firing_log import FiringLog
 import sdnotify
-from notifier      import TelegramNotifier
+from notifier      import TelegramNotifier, esc, b
 from sensor        import create_sensor, SensorInitError, SimulatedSensor
 from controller    import (KilnController, ControllerMode, ErrorKind,
                             RUNAWAY_RISE, OVERTEMP_ABS)
@@ -240,7 +240,8 @@ class KilnApp:
                     )
                 self.sensor = sensor
                 if notified:
-                    self.notifier.send("✅ *Termopar detectado.* Controlador liberado.")
+                    self.notifier.send(f"✅ {b('Termopar detectado.')} Controlador liberado.",
+                                       critical=True)
                 return
             except SensorInitError as e:
                 err = str(e)
@@ -249,10 +250,10 @@ class KilnApp:
                     last_err = err
                 if not notified:
                     self.notifier.send(
-                        "🚨 *Termopar não detectado na inicialização.*\n"
-                        "Forno bloqueado, relés desligados.\n"
-                        # escapa "_"/"*" (parse_mode=Markdown descartaria a msg)
-                        "Detalhe: " + err.replace("_", "\\_").replace("*", "\\*")
+                        f"🚨 {b('Termopar não detectado na inicialização.')}\n"
+                        f"Forno bloqueado, relés desligados.\n"
+                        f"Detalhe: {esc(err)}",
+                        critical=True,
                     )
                     notified = True
 
@@ -270,11 +271,11 @@ class KilnApp:
     def _generate_status(self, is_hourly=False) -> str:
         """Gera o texto de status atual para o Telegram."""
         if self.sensor is None:
-            return "🚨 *Termopar não detectado.*\nForno bloqueado, relés desligados."
+            return f"🚨 {b('Termopar não detectado.')}\nForno bloqueado, relés desligados."
         temp = self.sensor.temperature
         state = self.controller.state
         
-        prefix = "⏱ *Atualização de Hora em Hora*\n" if is_hourly else "📊 *Status do Forno*\n"
+        prefix = f"⏱ {b('Atualização de hora em hora')}\n" if is_hourly else f"📊 {b('Status do forno')}\n"
             
         if self.ui == UIState.RUNNING:
             if state.mode == ControllerMode.SOAKING:
@@ -282,7 +283,7 @@ class KilnApp:
                 return f"{prefix}Modo: Patamar (Soak)\nTemp: {temp:.1f}°C (Alvo: {state.setpoint:.0f}°C)\nRestante: {rem_m} min"
             else:
                 seg = state.curve["segments"][state.segment_index]
-                return f"{prefix}Curva: {state.curve['name']} (Seg {state.segment_index+1}/{len(state.curve['segments'])})\nTemp: {temp:.1f}°C (Alvo: {seg['target_temp']}°C)\nTaxa: {state.display_rate:+.0f}°C/h"
+                return f"{prefix}Curva: {esc(state.curve['name'])} (Seg {state.segment_index+1}/{len(state.curve['segments'])})\nTemp: {temp:.1f}°C (Alvo: {seg['target_temp']}°C)\nTaxa: {state.display_rate:+.0f}°C/h"
                 
         if self.ui == UIState.PREHEAT_RUN:
             return f"{prefix}Modo: Pré-aquecimento\nTemp: {temp:.1f}°C (Alvo: {self.preheat_target:.0f}°C)"
@@ -290,7 +291,11 @@ class KilnApp:
         if self.ui == UIState.FINISHED:
             return f"{prefix}A última queima foi concluída.\nTemp. Atual (Resfriando): {temp:.1f}°C"
             
-        return f"{prefix}Estado da UI: {self.ui.upper()}\nTemp: {temp:.1f}°C"
+        if self.ui == UIState.ERROR:
+            st = self.controller.state
+            return (f"{prefix}🚨 {b('Em ERRO')}: {esc(st.error_message or st.error_title)}\n"
+                    f"Temp: {temp:.1f}°C — relés desligados")
+        return f"{prefix}Estado: {esc(self.ui.upper())}\nTemp: {temp:.1f}°C"
 
     def _control_tick(self):
         temp  = self.sensor.temperature
@@ -332,7 +337,8 @@ class KilnApp:
             
             # Alerta de conclusão
             dur_h, dur_m = divmod(int(self.run_final_duration // 60), 60)
-            self.notifier.send(f"✅ *Queima Concluída!*\nDuração total: {dur_h}h{dur_m:02d}min\nTemp. Máx: {self.run_max_temp:.1f}°C")
+            self.notifier.send(f"✅ {b('Queima concluída!')}\nDuração total: {dur_h}h{dur_m:02d}min\n"
+                               f"Temp. máx: {self.run_max_temp:.1f}°C", critical=True)
 
         # Em IDLE, falha de sensor continua silenciosa (forno parado), mas
         # sobretemperatura / aquecimento com relés desligados sempre alarmam.
@@ -343,7 +349,8 @@ class KilnApp:
 
             # Alerta de erro
             detail = state.error_message or "Falha no termopar detectada."
-            self.notifier.send(f"🚨 *ERRO CRÍTICO!*\n{detail}\nOs relés foram desligados por segurança na temperatura de {temp:.1f}°C.")
+            self.notifier.send(f"🚨 {b('ERRO CRÍTICO!')}\n{esc(detail)}\nOs relés foram desligados "
+                               f"por segurança na temperatura de {temp:.1f}°C.", critical=True)
 
         # Aviso automático de hora em hora
         if self.ui in (UIState.RUNNING, UIState.PREHEAT_RUN, UIState.CANCEL_CONFIRM):
@@ -655,7 +662,8 @@ class KilnApp:
         self.last_hourly_announcement = 0
         
         # Envia alerta do Telegram
-        self.notifier.send(f"🔥 *Queima Iniciada*\nCurva: {curve['name']}\nTemp. Atual: {self.sensor.temperature:.1f}°C")
+        self.notifier.send(f"🔥 {b('Queima iniciada')}\nCurva: {esc(curve['name'])}\n"
+                           f"Temp. atual: {self.sensor.temperature:.1f}°C")
 
     def _start_preheat(self):
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)
@@ -795,8 +803,8 @@ class KilnApp:
             print(f"\r[main] {msg}")
             self.controller.fail(ErrorKind.INTERRUPTED, "Queima interrompida", msg)
             self.ui = UIState.ERROR
-            self.notifier.send(f"🚨 *Queima não retomada após reinício.*\n{msg}\n"
-                               f"Temp. atual: {temp:.1f}°C. Relés desligados.")
+            self.notifier.send(f"🚨 {b('Queima não retomada após reinício.')}\n{esc(msg)}\n"
+                               f"Temp. atual: {temp:.1f}°C. Relés desligados.", critical=True)
             return
 
         desc = self.controller.resume(snap, temp, downtime)
@@ -814,10 +822,10 @@ class KilnApp:
         self._persist_firing(temp, force=True)
 
         print(f"\r[main] Queima retomada após {downtime / 60:.0f} min fora do ar: {desc}")
-        self.notifier.send(f"♻️ *Queima retomada após reinício.*\n"
+        self.notifier.send(f"♻️ {b('Queima retomada após reinício.')}\n"
                            f"Fora do ar: {downtime / 60:.0f} min\n"
                            f"Temp. atual: {temp:.1f}°C (era {last_temp:.1f}°C)\n"
-                           f"Retomando: {desc}")
+                           f"Retomando: {esc(desc)}", critical=True)
 
     def _begin_new_curve(self):
         name = next_curve_name(self.curves)

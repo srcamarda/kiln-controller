@@ -181,6 +181,47 @@ class TestQueimaCompleta(unittest.TestCase):
             self.assertEqual(json.load(f)["end_reason"], "cancelada pelo operador")
 
 
+def _html_ok(msg):
+    """Só <b>/</b>, balanceados, e nenhum '<' solto (texto variável escapado)."""
+    import re
+    tags = re.findall(r"<[^>]*>", msg)
+    if any(t not in ("<b>", "</b>") for t in tags):
+        return False
+    depth = 0
+    for t in tags:
+        depth += 1 if t == "<b>" else -1
+        if depth < 0:
+            return False
+    return depth == 0 and "<" not in re.sub(r"</?b>", "", msg)
+
+
+class TestMensagensTelegram(TestQueimaCompleta):
+    """Todas as mensagens geradas numa queima com nome 'perigoso' são HTML válido."""
+
+    def test_mensagens_validas(self):
+        global CURVE
+        old = dict(CURVE)
+        CURVE["name"] = "Cone_6 *rápido* <teste> & cia"
+        try:
+            app = self._app()
+            app._start_curve()
+            app.ui = self.main.UIState.RUNNING
+            app.notifier.send(app._generate_status())
+            self._run(app, 2 * 3600)
+            app.notifier.send(app._generate_status())
+            app.controller.fail(ErrorKind.STALL, "x", "falha <com> _símbolos_ *")
+            app.ui = self.main.UIState.RUNNING
+            app._control_tick()
+            app.notifier.send(app._generate_status())
+            msgs = [c.args[0] for c in app.notifier.send.call_args_list]
+            self.assertGreaterEqual(len(msgs), 5)
+            for m in msgs:
+                self.assertTrue(_html_ok(m), m)
+        finally:
+            CURVE.clear()
+            CURVE.update(old)
+
+
 class TestUnidade(unittest.TestCase):
 
     def test_sem_diretorio_gravavel_nao_quebra(self):

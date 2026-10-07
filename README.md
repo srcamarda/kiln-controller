@@ -36,6 +36,10 @@ chmod 600 .env
 
 Variáveis já definidas no ambiente (ex.: `Environment=`/`EnvironmentFile=` no systemd) têm precedência sobre o `.env`. Sem token/chat o Telegram fica desativado; sem `KILN_STOP_PASSWORD` o `/stop` remoto fica desativado.
 
+Comandos: `/status` e `/stop` (pede a senha; a mensagem com a senha é apagada do chat se o bot tiver permissão; 3 senhas erradas bloqueiam o `/stop` por 15 min). Em grupos, só aceita comandos de pessoas cujo id também está em `KILN_TELEGRAM_CHAT_IDS`.
+
+Entrega: sem internet ou com o Telegram fora, as mensagens são reenviadas com espera crescente — alertas críticos (erros, queima retomada/não retomada, conclusão) por até 6 h, as demais por até 10 min. Falhas aparecem em `journalctl -u kiln-controller`.
+
 ## Limites de segurança (software)
 
 Qualquer um destes desliga os relés e trava em ERRO (tela + alerta no Telegram); os valores ficam no topo do `controller.py`:
