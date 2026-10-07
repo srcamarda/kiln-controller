@@ -36,9 +36,25 @@ chmod 600 .env
 
 Variáveis já definidas no ambiente (ex.: `Environment=`/`EnvironmentFile=` no systemd) têm precedência sobre o `.env`. Sem token/chat o Telegram fica desativado; sem `KILN_STOP_PASSWORD` o `/stop` remoto fica desativado.
 
-Comandos (executados pelo loop principal do controlador, não pela thread do Telegram; a resposta confirma o que aconteceu — ex.: "nenhuma queima em andamento"): `/status` e `/stop` (pede a senha; a mensagem com a senha é apagada do chat se o bot tiver permissão; 3 senhas erradas bloqueiam o `/stop` por 15 min). Em grupos, só aceita comandos de pessoas cujo id também está em `KILN_TELEGRAM_CHAT_IDS`.
+Comandos (executados pelo loop principal do controlador, não pela thread do Telegram; a resposta confirma o que aconteceu — ex.: "nenhuma queima em andamento"): `/status` e `/stop` (pede a senha; a mensagem com a senha é apagada do chat se o bot tiver permissão; 3 senhas erradas bloqueiam o `/stop` por 15 min). Só aceita comandos de usuários em `KILN_TELEGRAM_ADMIN_IDS` (vazio = os chat ids, para uso em chat privado); a senha do `/stop` só vale vinda de quem pediu.
 
 Entrega: sem internet ou com o Telegram fora, as mensagens são reenviadas com espera crescente — alertas críticos (erros, queima retomada/não retomada, conclusão) por até 6 h, as demais por até 10 min. Falhas aparecem em `journalctl -u kiln-controller`.
+
+### Mensagens num grupo
+
+1. Adicione o bot do forno ao grupo e **promova-o a administrador** (sem isso ele não recebe a senha digitada após o `/stop` — por padrão bots em grupo só veem comandos — e não consegue apagar a mensagem com a senha). Promover pode converter o grupo em supergrupo e **mudar o id**: pegue o id depois deste passo.
+2. Descubra o id do grupo: com o serviço rodando, mande `/status` no grupo e veja o log (`journalctl -u kiln-controller -n 20`): aparece `Mensagem de chat não autorizado ignorada: id=-100…`.
+3. No `.env`: `KILN_TELEGRAM_CHAT_IDS=<id do grupo>` e `KILN_TELEGRAM_ADMIN_IDS=<seu id de usuário>` (o id que antes estava em `KILN_TELEGRAM_CHAT_IDS`). Reinicie: `sudo systemctl restart kiln-controller`.
+
+Se o grupo mudar de id depois, o log avisa o id novo ao tentar enviar.
+
+## Aviso de queda (healthchecks.io)
+
+Durante cada queima o Pi manda um sinal de vida por minuto para o healthchecks.io (com temperatura, setpoint e segmento, visíveis no histórico do check). Se os sinais param — queda de energia, travamento, falta de internet — o healthchecks.io avisa pelo Telegram em ~10 min. Em ERRO o Pi também sinaliza falha na hora. Ao fim da queima o check é pausado, para não alertar com o forno parado.
+
+1. No healthchecks.io, crie um check com **período 5 min e tolerância 5 min** e conecte a integração do Telegram (@HealthchecksBot).
+2. No `.env`: `KILN_HC_PING_URL=https://hc-ping.com/<uuid>` (a URL do check, formato com uuid) e `KILN_HC_API_KEY=<chave read-write>` (Settings do projeto → API Access).
+3. Antes da primeira queima, deixe o check **pausado** (botão Pause) — ele é reativado automaticamente quando a queima começa.
 
 ## Limites de segurança (software)
 

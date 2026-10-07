@@ -171,6 +171,8 @@ class TestMainResume(unittest.TestCase):
         app._resume_times = []
         from firing_log import FiringLog
         app.flog = FiringLog(os.path.join(self.dir, "logs"))
+        from heartbeat import Heartbeat
+        app.hb = Heartbeat("")
         app.curves = [CURVE]
         app.curve_sel = 0
         return app

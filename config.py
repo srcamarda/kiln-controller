@@ -7,8 +7,11 @@ Ordem de precedência:
 
 Variáveis:
   KILN_TELEGRAM_TOKEN     token do bot (BotFather)
-  KILN_TELEGRAM_CHAT_IDS  ids autorizados, separados por vírgula
+  KILN_TELEGRAM_CHAT_IDS  chats que recebem as mensagens (privado ou grupo), separados por vírgula
   KILN_STOP_PASSWORD      senha de confirmação do /stop
+  KILN_TELEGRAM_ADMIN_IDS ids de USUÁRIO que podem dar comandos (padrão: os chat ids)
+  KILN_HC_PING_URL        URL de ping do healthchecks.io (https://hc-ping.com/<uuid>)
+  KILN_HC_API_KEY         chave de API read-write do projeto (para pausar o check)
 """
 
 import os
@@ -74,3 +77,25 @@ def telegram_config(environ=None):
     elif password is None:
         print("\r[config] KILN_STOP_PASSWORD ausente — /stop remoto desativado.")
     return token, chat_ids, password
+
+
+def _id_list(raw: str):
+    return [c.strip() for c in (raw or "").split(",") if c.strip()]
+
+
+def telegram_admin_ids(environ=None):
+    """Usuários autorizados a comandar. Vazio → o notifier usa os chat ids."""
+    environ = os.environ if environ is None else environ
+    return _id_list(environ.get("KILN_TELEGRAM_ADMIN_IDS", ""))
+
+
+def heartbeat_config(environ=None):
+    """Retorna (ping_url, api_key). Sem URL o heartbeat fica desligado."""
+    environ = os.environ if environ is None else environ
+    url = environ.get("KILN_HC_PING_URL", "").strip()
+    key = environ.get("KILN_HC_API_KEY", "").strip()
+    if not url:
+        print("\r[config] KILN_HC_PING_URL ausente — heartbeat externo desativado.")
+    elif not key:
+        print("\r[config] KILN_HC_API_KEY ausente — o check não será pausado entre queimas.")
+    return url, key

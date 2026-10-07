@@ -136,6 +136,15 @@ class TestClassificacaoHTTP(unittest.TestCase):
             with self.assertRaises(n._Retry):
                 self.t._post("sendMessage", {})
 
+    def test_grupo_migrado(self):
+        body = {"ok": False, "description": "Bad Request: group chat was upgraded to a supergroup chat",
+                "parameters": {"migrate_to_chat_id": -100987}}
+        err = urllib.error.HTTPError("u", 400, "x", {}, io.BytesIO(json.dumps(body).encode()))
+        with self._raise(err):
+            with self.assertRaises(n._Fatal) as cm:
+                self.t._post("sendMessage", {})
+        self.assertIn("-100987", str(cm.exception))
+
     def test_403(self):
         with self._raise(http_error(403, "Forbidden: bot was blocked by the user")):
             with self.assertRaises(n._Fatal):
@@ -202,6 +211,39 @@ class TestComandoStop(unittest.TestCase):
         self.assertEqual(self.sent, [])
         self.msg("/stop", chat="-100", frm="111")      # pessoa autorizada no grupo
         self.assertEqual(len(self.sent), 1)
+
+    def test_grupo_com_admins_separados(self):
+        """Mensagens vão para o grupo; comandos só de usuários em admin_ids."""
+        self.t.chat_ids = ["-1001"]
+        self.t._admin_ids = ["111"]
+        self.msg("/stop", chat="-1001", frm="999")     # membro qualquer
+        self.assertEqual(self.sent, [])
+        self.msg("/stop", chat="-1001", frm="111")     # admin
+        self.msg("segredo", chat="-1001", frm="111")
+        self.assertEqual(self.stopped, 1)
+
+    def test_senha_so_de_quem_pediu(self):
+        self.t.chat_ids = ["-1001"]
+        self.t._admin_ids = ["111", "222"]
+        self.msg("/stop", chat="-1001", frm="111")
+        self.msg("segredo", chat="-1001", frm="222")   # outro admin não confirma o pedido do primeiro
+        self.assertEqual(self.stopped, 0)
+        self.msg("segredo", chat="-1001", frm="111")
+        self.assertEqual(self.stopped, 1)
+
+    def test_novo_comando_cancela_espera_da_senha(self):
+        self.msg("/stop")
+        self.msg("/status")
+        self.msg("segredo")
+        self.assertEqual(self.stopped, 0)
+
+    def test_chat_desconhecido_logado_uma_vez(self):
+        with mock.patch("builtins.print") as p:
+            self.msg("/status", chat="-100555")
+            self.msg("oi", chat="-100555")
+        logs = [c.args[0] for c in p.call_args_list if "-100555" in c.args[0]]
+        self.assertEqual(len(logs), 1)
+        self.assertIn("KILN_TELEGRAM_CHAT_IDS", logs[0])
 
     def test_sem_senha_stop_desativado(self):
         t = TelegramNotifier("", [], stop_callback=self._stop)

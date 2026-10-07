@@ -56,15 +56,18 @@ class _Retry(Exception):
 
 class TelegramNotifier:
     def __init__(self, token: str, chat_ids, status_callback=None, stop_callback=None,
-                 stop_password=None):
+                 stop_password=None, admin_ids=None):
+        """
+        chat_ids  — chats que recebem as mensagens (privado: id do usuário;
+                    grupo: id negativo, ex. -100123…). Comandos só são aceitos
+                    vindos desses chats.
+        admin_ids — usuários que podem dar comandos (/status, /stop). Padrão:
+                    os próprios chat_ids (uso em chat privado).
+        """
         self.token = token.strip() if token else ""
-
-        if isinstance(chat_ids, str):
-            self.chat_ids = [cid.strip() for cid in chat_ids.split(",") if cid.strip()]
-        elif isinstance(chat_ids, list):
-            self.chat_ids = [str(cid).strip() for cid in chat_ids if str(cid).strip()]
-        else:
-            self.chat_ids = []
+        self.chat_ids  = self._ids(chat_ids)
+        self._admin_ids = self._ids(admin_ids)
+        self._unknown_logged = set()
 
         self.status_callback = status_callback
         self.stop_callback = stop_callback
@@ -73,9 +76,9 @@ class TelegramNotifier:
         if not self.stop_password:
             self.stop_callback = None
 
-        self._pending_stops = {}   # {chat_id: instante do /stop}
-        self._stop_fails    = {}   # {chat_id: senhas erradas seguidas}
-        self._stop_locked   = {}   # {chat_id: bloqueado até}
+        self._pending_stops = {}   # {(chat_id, user_id): instante do /stop}
+        self._stop_fails    = {}   # {(chat_id, user_id): senhas erradas seguidas}
+        self._stop_locked   = {}   # {(chat_id, user_id): bloqueado até}
 
         self._queue = queue.Queue()
         self._last_rx_error = None
@@ -92,6 +95,19 @@ class TelegramNotifier:
                   f"{'ON' if (status_callback or self.stop_callback) else 'OFF'}")
         else:
             print("\r[notifier] Telegram desativado.")
+
+    @property
+    def admin_ids(self):
+        """Usuários que podem comandar; sem configuração, os próprios chat ids."""
+        return self._admin_ids or self.chat_ids
+
+    @staticmethod
+    def _ids(value):
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        return []
 
     # ── Envio ─────────────────────────────────
 
@@ -169,6 +185,11 @@ class TelegramNotifier:
                 raise _Retry()
             if e.code == 400 and "parse" in desc.lower():
                 raise _BadFormat(desc)
+            new_id = (body.get("parameters") or {}).get("migrate_to_chat_id")
+            if new_id:
+                # Grupo virou supergrupo (ex.: ao promover o bot a admin): o id muda
+                raise _Fatal(f"o grupo mudou de id — atualize KILN_TELEGRAM_CHAT_IDS "
+                             f"para {new_id}")
             raise _Fatal(f"{e.code} {desc}")
         except (urllib.error.URLError, OSError, ValueError) as e:
             if not quiet:
@@ -201,27 +222,41 @@ class TelegramNotifier:
 
     def _handle_update(self, msg: dict):
         text    = (msg.get("text") or "").strip()
-        chat_id = str((msg.get("chat") or {}).get("id", ""))
-        from_id = str((msg.get("from") or {}).get("id", ""))
-        if not text or chat_id not in self.chat_ids:
+        chat    = msg.get("chat") or {}
+        sender  = msg.get("from") or {}
+        chat_id = str(chat.get("id", ""))
+        from_id = str(sender.get("id", ""))
+        if chat_id and chat_id not in self.chat_ids:
+            self._log_unknown("chat", chat_id, chat.get("title") or chat.get("username") or "",
+                              "KILN_TELEGRAM_CHAT_IDS")
             return
-        # Em grupos, só aceita comandos de quem também está autorizado
-        # individualmente (chat privado: from.id == chat.id).
-        if from_id != chat_id and from_id not in self.chat_ids:
+        if not text:
             return
+        # Só aceita comandos de usuários autorizados (em grupo, qualquer membro
+        # pode escrever; em chat privado from.id == chat.id)
+        if from_id not in self.admin_ids:
+            if text.startswith("/"):
+                self._log_unknown("usuário", from_id,
+                                  sender.get("username") or sender.get("first_name") or "",
+                                  "KILN_TELEGRAM_ADMIN_IDS")
+            return
+        # A senha do /stop é esperada de quem pediu, no mesmo chat
+        key = (chat_id, from_id)
 
         now = time.time()
 
-        # 1. Aguardando a senha deste chat?
-        if chat_id in self._pending_stops:
-            elapsed = now - self._pending_stops.pop(chat_id)
+        # 1. Aguardando a senha deste usuário? (um novo comando cancela a espera)
+        if key in self._pending_stops and text.startswith("/"):
+            self._pending_stops.pop(key, None)
+        if key in self._pending_stops:
+            elapsed = now - self._pending_stops.pop(key)
             self._delete_message(chat_id, msg.get("message_id"))   # tira a senha do histórico
             if elapsed > STOP_CONFIRM_S:
                 self.send(f"⌛ {b('Tempo esgotado.')} Operação cancelada. "
                           f"Digite /stop novamente se necessário.", specific_chat_id=chat_id)
                 return
             if hmac.compare_digest(text.encode("utf-8"), self.stop_password.encode("utf-8")):
-                self._stop_fails.pop(chat_id, None)
+                self._stop_fails.pop(key, None)
                 try:
                     result = self.stop_callback() if self.stop_callback else None
                 except Exception as e:
@@ -235,11 +270,11 @@ class TelegramNotifier:
                 self.send(f"🚨 {b('DESLIGAMENTO EXECUTADO!')}\n{detail}",
                           specific_chat_id=chat_id, critical=True)
             else:
-                fails = self._stop_fails.get(chat_id, 0) + 1
-                self._stop_fails[chat_id] = fails
+                fails = self._stop_fails.get(key, 0) + 1
+                self._stop_fails[key] = fails
                 if fails >= STOP_MAX_FAILS:
-                    self._stop_locked[chat_id] = now + STOP_LOCKOUT_S
-                    self._stop_fails.pop(chat_id, None)
+                    self._stop_locked[key] = now + STOP_LOCKOUT_S
+                    self._stop_fails.pop(key, None)
                     self.send(f"⛔ {b('Senha incorreta.')} /stop bloqueado por "
                               f"{STOP_LOCKOUT_S // 60} min após {fails} tentativas.",
                               specific_chat_id=chat_id)
@@ -254,15 +289,25 @@ class TelegramNotifier:
             self.send(self.status_callback(), specific_chat_id=chat_id)
 
         elif text.startswith("/stop") and self.stop_callback:
-            locked_until = self._stop_locked.get(chat_id, 0)
+            locked_until = self._stop_locked.get(key, 0)
             if now < locked_until:
                 self.send(f"⛔ /stop bloqueado por mais {int((locked_until - now) // 60) + 1} min "
                           f"(senhas incorretas). Use o encoder no forno.", specific_chat_id=chat_id)
                 return
-            self._pending_stops[chat_id] = now
+            self._pending_stops[key] = now
             self.send(f"⚠️ {b('ATENÇÃO!')} Você solicitou o {b('DESLIGAMENTO DE EMERGÊNCIA')}.\n\n"
                       f"Para confirmar, digite a sua senha de segurança nos próximos "
                       f"{STOP_CONFIRM_S} segundos:", specific_chat_id=chat_id)
+
+    def _log_unknown(self, kind, ident, name, var):
+        """Loga (uma vez por id) mensagem de chat/usuário não autorizado —
+        é assim que se descobre o id de um grupo novo."""
+        if ident in self._unknown_logged:
+            return
+        self._unknown_logged.add(ident)
+        label = f" ({name})" if name else ""
+        print(f"\r[notifier] Mensagem de {kind} não autorizado ignorada: id={ident}{label}. "
+              f"Para autorizar, adicione o id em {var}.")
 
     def _delete_message(self, chat_id, message_id):
         if not message_id:

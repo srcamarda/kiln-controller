@@ -112,6 +112,8 @@ class TestQueimaCompleta(unittest.TestCase):
         app._state_saved = False
         app._resume_times = []
         app.flog = FiringLog(os.path.join(self.dir, "logs"))
+        from heartbeat import Heartbeat
+        app.hb = Heartbeat("")
         app.curves = [CURVE]
         app.curve_sel = 0
         return app

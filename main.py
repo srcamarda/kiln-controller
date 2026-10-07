@@ -29,7 +29,9 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config        import load_env_file, telegram_config
+from config        import (load_env_file, telegram_config, telegram_admin_ids,
+                            heartbeat_config)
+from heartbeat     import Heartbeat, describe as hb_describe
 import firing_state
 import controller as ctrl_cfg
 from firing_log import FiringLog
@@ -140,8 +142,12 @@ class KilnApp:
             chat_ids,
             status_callback=self._remote_status,
             stop_callback=self._remote_stop_request if stop_password else None,
-            stop_password=stop_password
+            stop_password=stop_password,
+            admin_ids=telegram_admin_ids(),
         )
+
+        # Sinal de vida externo (healthchecks.io) durante as queimas
+        self.hb = Heartbeat(*heartbeat_config())
         if self._curve_warnings:
             self.notifier.send("⚠️ " + b("Problema no arquivo de curvas:") + "\n" +
                                "\n".join(esc(w) for w in self._curve_warnings))
@@ -344,6 +350,15 @@ class KilnApp:
                           f"{state.error_message}", wall, row)
         else:
             self.flog.record(row, wall)
+
+        # Sinal de vida externo
+        if self.controller.is_active():
+            self.hb.update(hb_describe(state, temp, (state.curve or {}).get("name")
+                                       if state.mode != ControllerMode.PREHEAT else None))
+        elif self.hb.active and state.mode == ControllerMode.FINISHED:
+            self.hb.finish("Queima concluída")
+        elif self.hb.active and state.mode == ControllerMode.ERROR:
+            self.hb.fail(f"ERRO: {state.error_message}")
 
         # Transições automáticas do controlador
         if state.mode == ControllerMode.FINISHED and self.ui in (UIState.RUNNING, UIState.CANCEL_CONFIRM):
@@ -697,6 +712,7 @@ class KilnApp:
         self.run_max_temp  = self.sensor.temperature
         self.run_start_str = self.rtc.now().strftime("%H:%M")
         self.controller.start_curve(curve, self.sensor.temperature)
+        self.hb.start(f"Queima iniciada: {curve['name']}")
         self.flog.start("curve", curve["name"], curve, self._log_params(),
                         self._wall_dt(), self.sensor.temperature)
         self.ui = UIState.RUNNING
@@ -708,6 +724,7 @@ class KilnApp:
 
     def _start_preheat(self):
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)
+        self.hb.start(f"Pré-aquecimento a {self.preheat_target:.0f} °C")
         self.flog.start("preheat", f"preaquecimento {self.preheat_target:.0f}C", None,
                         self._log_params(), self._wall_dt(), self.sensor.temperature)
         self.ui = UIState.PREHEAT_RUN
@@ -718,6 +735,7 @@ class KilnApp:
         self.relays.off()
         self._clear_firing()
         self.flog.end("cancelada pelo operador", self._wall_dt())
+        self.hb.finish("Queima cancelada pelo operador")
         self.ui = UIState.IDLE
 
     # ──────────────────────────────────────────────
@@ -842,6 +860,7 @@ class KilnApp:
             if self.flog.attach(snap.get("log_file"), "não retomada", downtime):
                 self.flog.end(f"não retomada após reinício: {problem}", self._wall_dt())
             print(f"\r[main] {msg}")
+            self.hb.fail(msg)
             self.controller.fail(ErrorKind.INTERRUPTED, "Queima interrompida", msg)
             self.ui = UIState.ERROR
             self.notifier.send(f"🚨 {b('Queima não retomada após reinício.')}\n{esc(msg)}\n"
@@ -849,6 +868,7 @@ class KilnApp:
             return
 
         desc = self.controller.resume(snap, temp, downtime)
+        self.hb.start(f"Queima retomada após {downtime / 60:.0f} min: {desc}")
         if self.flog.attach(snap.get("log_file"), desc, downtime):
             self.flog.event(f"RETOMADA após {downtime / 60:.0f} min fora do ar "
                             f"(era {last_temp:.1f} °C): {desc}",
@@ -1040,6 +1060,7 @@ class KilnApp:
         self.relays.off()
         self._clear_firing()
         self.flog.end("parada remota (/stop)", self._wall_dt())
+        self.hb.finish("Queima parada remotamente (/stop)")
         self.ui = UIState.IDLE
         return "Os relés foram desligados e a queima foi interrompida."
 
