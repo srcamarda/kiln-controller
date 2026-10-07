@@ -37,6 +37,7 @@ WARMUP_TEMP     = 60.0   # °C — abaixo disso banco A fica sempre ligado (sem 
 DUAL_BANK_TEMP  = 600.0  # °C — abaixo disso só banco A
 RATE_TOLERANCE  = 1.20   # 20% acima do rate alvo → desliga banco B
 RATE_WINDOW     = 300.0  # segundos para calcular o rate atual
+RATE_MIN_WINDOW = 120.0  # s de dados exigidos antes de usar o rate no controle
 PREHEAT_MIN     = 100    # °C — mínimo do modo pré-aquecimento
 PREHEAT_MAX     = 600    # °C — máximo do modo pré-aquecimento
 PREHEAT_STEP    = 10     # °C — passo do encoder no pré-aquecimento
@@ -102,6 +103,7 @@ class ControllerState:
     # Diagnóstico
     setpoint:         float          = 0.0
     current_rate:     float          = 0.0   # °C/h medido (bruto, usado no controle)
+    rate_valid:       bool           = False  # janela com dados suficientes (≥ RATE_MIN_WINDOW)
     display_rate:     float          = 0.0   # °C/h suavizado (só para exibição)
     bank_b_suppressed: bool          = False  # desligado por overshoot
 
@@ -149,7 +151,7 @@ class KilnController:
         s.run_start_time     = time.time()
         s.soak_start_time    = None
         s.mode               = ControllerMode.RAMPING
-        s._temp_history      = []
+        self._reset_rate()
         self._reset_safety()
         self._set_segment_deadline()
         _log(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C")
@@ -160,6 +162,7 @@ class KilnController:
         self.state.preheat_target = target
         self.state.mode           = ControllerMode.PREHEAT
         self.state.run_start_time = time.time()
+        self._reset_rate()
         self._reset_safety()
         self.state.preheat_start_time = time.monotonic()
         self.state.segment_deadline = self.state.preheat_start_time + PREHEAT_MAX_S
@@ -214,11 +217,7 @@ class KilnController:
         mode = ControllerMode[snap["mode"]]
 
         self._reset_safety()
-        s._temp_history  = []
-        s._rate_history  = []
-        s.current_rate   = 0.0
-        s.display_rate   = 0.0
-        s.bank_b_suppressed = False
+        self._reset_rate()
         s.run_start_time = time.time() - snap.get("run_elapsed_s", 0.0) - max(0.0, downtime_s)
         s.preheat_target = snap.get("preheat_target", s.preheat_target)
         s.curve          = snap.get("curve")
@@ -397,7 +396,9 @@ class KilnController:
             want_a = self._hysteresis(temp, setpoint, s.bank_a)
             seg = s.curve["segments"][s.segment_index]
             target_rate = float(seg["rate_per_hour"])
-            if s.current_rate > target_rate * RATE_TOLERANCE:
+            # Só confia no rate com janela suficiente (logo após iniciar/retomar
+            # poucas amostras dão valores absurdos e cortariam o B à toa)
+            if s.rate_valid and s.current_rate > target_rate * RATE_TOLERANCE:
                 s.bank_b_suppressed = True
                 want_b = False
             else:
@@ -464,8 +465,10 @@ class KilnController:
             dt = t1 - t0
             if dt > 0:
                 s.current_rate = (v1 - v0) / dt * 3600.0  # °C/hora
+            s.rate_valid = dt >= RATE_MIN_WINDOW
         else:
             s.current_rate = 0.0
+            s.rate_valid   = False
 
         # Suavização para display — média móvel das últimas N leituras
         s._rate_history.append(s.current_rate)
@@ -474,6 +477,15 @@ class KilnController:
         s.display_rate = sum(s._rate_history) / len(s._rate_history)
 
     # ── Segurança ─────────────────────────────
+
+    def _reset_rate(self):
+        s = self.state
+        s._temp_history     = []
+        s._rate_history     = []
+        s.current_rate      = 0.0
+        s.display_rate      = 0.0
+        s.rate_valid        = False
+        s.bank_b_suppressed = False
 
     def _reset_safety(self):
         s = self.state
