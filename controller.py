@@ -26,7 +26,13 @@ def _log(msg): print(f"\r{msg}")
 # Configurações
 # ──────────────────────────────────────────────
 
-HYSTERESIS      = 8.0    # °C — margem bang-bang (liga abaixo, desliga acima)
+HYSTERESIS      = 8.0    # °C — tolerância para considerar o alvo do segmento atingido
+HYST_BELOW      = 4.0    # °C — liga quando abaixo de setpoint − HYST_BELOW
+HYST_ABOVE      = 4.0    # °C — desliga quando acima de setpoint + HYST_ABOVE
+                         #      (entre os dois, mantém o estado anterior)
+MIN_ON_S        = 30.0   # s — tempo mínimo ligado antes de poder desligar
+MIN_OFF_S       = 30.0   # s — tempo mínimo desligado antes de poder religar
+                         #      (desligamentos de segurança ignoram esses tempos)
 WARMUP_TEMP     = 60.0   # °C — abaixo disso banco A fica sempre ligado (sem bang-bang)
 DUAL_BANK_TEMP  = 600.0  # °C — abaixo disso só banco A
 RATE_TOLERANCE  = 1.20   # 20% acima do rate alvo → desliga banco B
@@ -117,6 +123,9 @@ class ControllerState:
     segment_deadline: Optional[float] = None   # monotonic
     _stall_ref:       Optional[tuple] = None   # (t, temp) desde que passou a "ficar para trás"
     _runaway_ref:     Optional[float] = None   # menor temp com bancos desligados
+
+    # Instante (monotonic) da última comutação de cada banco pelo controle
+    _switched_at:     dict = field(default_factory=lambda: {"a": None, "b": None})
 
 
 # ──────────────────────────────────────────────
@@ -308,8 +317,8 @@ class KilnController:
     def _run_preheat(self, temp: float):
         s = self.state
         s.setpoint = s.preheat_target
-        s.bank_b   = False
-        s.bank_a   = self._bangbang(temp, s.setpoint)
+        s.bank_b   = self._gate("b", False)
+        s.bank_a   = self._gate("a", self._hysteresis(temp, s.setpoint, s.bank_a))
 
     def _run_ramping(self, temp: float):
         s = self.state
@@ -367,49 +376,69 @@ class KilnController:
           - Warmup: abaixo de WARMUP_TEMP banco A fica sempre ligado
           - Temperatura atual (abaixo de DUAL_BANK_TEMP → só A)
           - Rate atual vs rate alvo (suprime B se subindo rápido demais)
+        Toda decisão passa por histerese com memória e por tempos mínimos
+        de comutação (_gate), para não ficar batendo os contatores.
         """
         s = self.state
 
         if temp < WARMUP_TEMP:
-            # Fase de aquecimento inicial — banco A sempre ligado, sem bang-bang
-            s.bank_a = True
-            s.bank_b = False
+            # Fase de aquecimento inicial — banco A sempre ligado
+            want_a, want_b = True, False
             s.bank_b_suppressed = False
-            return
 
-        if temp < DUAL_BANK_TEMP:
-            # Abaixo de 600°C: só banco A com bang-bang
-            s.bank_b = False
+        elif temp < DUAL_BANK_TEMP:
+            # Abaixo de 600°C: só banco A
+            want_a = self._hysteresis(temp, setpoint, s.bank_a)
+            want_b = False
             s.bank_b_suppressed = False
-            s.bank_a = self._bangbang(temp, setpoint)
-            return
 
-        # Acima de 600°C: verifica supressão de rate
-        seg = s.curve["segments"][s.segment_index]
-        target_rate = float(seg["rate_per_hour"])
-
-        if s.current_rate > target_rate * RATE_TOLERANCE:
-            # Subindo rápido demais — desliga banco B
-            s.bank_b_suppressed = True
-            s.bank_b = False
         else:
-            s.bank_b_suppressed = False
-            s.bank_b = self._bangbang(temp, setpoint)
+            # Acima de 600°C: B também, salvo supressão por rate
+            want_a = self._hysteresis(temp, setpoint, s.bank_a)
+            seg = s.curve["segments"][s.segment_index]
+            target_rate = float(seg["rate_per_hour"])
+            if s.current_rate > target_rate * RATE_TOLERANCE:
+                s.bank_b_suppressed = True
+                want_b = False
+            else:
+                s.bank_b_suppressed = False
+                want_b = self._hysteresis(temp, setpoint, s.bank_b)
 
-        s.bank_a = self._bangbang(temp, setpoint)
+        s.bank_a = self._gate("a", want_a)
+        s.bank_b = self._gate("b", want_b)
 
-    def _bangbang(self, temp: float, setpoint: float) -> bool:
+    @staticmethod
+    def _hysteresis(temp: float, setpoint: float, current: bool) -> bool:
         """
-        Retorna True (ligar) ou False (desligar).
-        Liga quando abaixo do setpoint, desliga quando acima de setpoint + histerese.
-        Para fornos (sistema lento), isso é suficiente para evitar chatter nos relés.
+        Histerese com memória:
+          liga   abaixo de setpoint − HYST_BELOW
+          desliga acima  de setpoint + HYST_ABOVE
+          no meio, mantém o estado atual (é isso que evita o chattering).
         """
-        if temp >= setpoint + HYSTERESIS:
-            return False
-        if temp < setpoint:
+        if temp < setpoint - HYST_BELOW:
             return True
-        # Dentro da banda [setpoint, setpoint + histerese]: mantém desligado
-        return False
+        if temp > setpoint + HYST_ABOVE:
+            return False
+        return current
+
+    def _gate(self, bank: str, want: bool) -> bool:
+        """
+        Aplica tempo mínimo ligado/desligado à decisão de controle.
+        Não é usado pelos desligamentos de segurança (_fault, stop, FINISHED),
+        que atuam imediatamente.
+        """
+        s = self.state
+        current = s.bank_a if bank == "a" else s.bank_b
+        if want == current:
+            return current
+        now  = time.monotonic()
+        last = s._switched_at.get(bank)
+        if last is not None:
+            min_s = MIN_ON_S if current else MIN_OFF_S
+            if now - last < min_s:
+                return current
+        s._switched_at[bank] = now
+        return want
 
     # ── Utilitários ───────────────────────────
 
@@ -454,6 +483,7 @@ class KilnController:
         s.segment_deadline = None
         s._stall_ref    = None
         s._runaway_ref  = None
+        s._switched_at  = {"a": None, "b": None}
 
     def _set_segment_deadline(self):
         """Prazo do segmento atual: duração teórica × fator + folga."""
