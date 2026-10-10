@@ -233,12 +233,32 @@ class KilnApp:
         except KeyboardInterrupt:
             pass
         finally:
-            self._emergency_stop()
-            self.flog.close()
-            self.display.close()
-            self.encoder.cleanup()
-            self.relays.cleanup()
+            self._cleanup_hardware()
             print("\r\n[main] Encerrado.")
+
+    def _cleanup_hardware(self):
+        """
+        Encerramento tolerante a falhas: cada etapa roda isolada, de modo que
+        um erro no log, no display ou no encoder não impede as seguintes.
+        Os relés são desligados primeiro e liberados por último, sempre.
+        """
+        steps = (
+            ("parada de emergência", self._emergency_stop),
+            ("log da queima",        lambda: self.flog.close()),
+            ("display",              lambda: self.display.close()),
+            ("encoder",              lambda: self.encoder.cleanup()),
+            ("relés",                lambda: self.relays.cleanup()),
+        )
+        for name, fn in steps:
+            try:
+                fn()
+            except Exception as e:
+                print(f"\r[main] Falha no encerramento ({name}): {e!r}")
+                if name == "parada de emergência":
+                    try:
+                        self.relays.off()
+                    except Exception as e2:
+                        print(f"\r[main] Falha ao desligar relés: {e2!r}")
 
     # ──────────────────────────────────────────────
     # Ciclo de controle
@@ -283,9 +303,8 @@ class KilnApp:
                     )
                     notified = True
 
-            self.display.show_error("Termopar ausente",
-                                    "Relés desligados",
-                                    "Tentando novamente...")
+            self._safe_display(self.display.show_error, "Termopar ausente",
+                               "Relés desligados", "Tentando novamente...")
             # Mantém o encoder drenado durante a espera
             deadline = time.monotonic() + SENSOR_RETRY_S
             while time.monotonic() < deadline:
@@ -403,7 +422,34 @@ class KilnApp:
     # Atualização do display
     # ──────────────────────────────────────────────
 
+    DISPLAY_ERR_REPEAT_S = 300   # repete no log o mesmo erro de tela no máx. a cada 5 min
+
+    def _safe_display(self, fn, *args, **kwargs):
+        """
+        Executa uma operação de tela sem deixar exceções escaparem: a tela e
+        o relógio são acessórios e nunca podem derrubar o controle do forno.
+        Registra o erro uma vez (e de novo a cada DISPLAY_ERR_REPEAT_S).
+        """
+        try:
+            fn(*args, **kwargs)
+            if getattr(self, "_display_err", None):
+                print("\r[main] Atualização da tela normalizada.")
+                self._display_err = None
+            return True
+        except Exception as e:
+            err = repr(e)
+            now = time.monotonic()
+            last = getattr(self, "_display_err", None)
+            if (last is None or last[0] != err
+                    or now - last[1] >= self.DISPLAY_ERR_REPEAT_S):
+                print(f"\r[main] Falha ao atualizar a tela (controle segue): {err}")
+                self._display_err = (err, now)
+            return False
+
     def _update_display(self):
+        return self._safe_display(self._render_display)
+
+    def _render_display(self):
         temp  = self.sensor.temperature
         state = self.controller.state
         now_str = self.rtc.now().strftime("%H:%M:%S")

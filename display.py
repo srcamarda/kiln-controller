@@ -13,6 +13,7 @@ Telas implementadas:
 """
 
 import struct
+import time
 import os
 from PIL import Image, ImageDraw, ImageFont
 from controller import ControllerMode
@@ -53,7 +54,17 @@ def _font(size, bold=False, mono=False):
     key = (size, bold, mono)
     if key not in _font_cache:
         path = FONT_M if mono else (FONT_B if bold else FONT)
-        _font_cache[key] = ImageFont.truetype(path, size)
+        try:
+            _font_cache[key] = ImageFont.truetype(path, size)
+        except OSError:
+            # Fonte ausente não pode impedir o controlador de subir
+            if not _font_cache.get("_warned"):
+                print(f"\r[display] Fonte {path} não encontrada — usando a fonte padrão.")
+                _font_cache["_warned"] = True
+            try:
+                _font_cache[key] = ImageFont.load_default(size=size)
+            except TypeError:               # Pillow antigo
+                _font_cache[key] = ImageFont.load_default()
     return _font_cache[key]
 
 
@@ -555,16 +566,40 @@ class Display:
             _font(size)
             _font(size, bold=True)
 
+    REOPEN_S = 30   # intervalo entre tentativas de reabrir o framebuffer
+
     def open(self):
-        self._fb = open(self._fb_dev, "wb")
+        """Abre o framebuffer. Falha (ex.: sem /dev/fb1) não derruba o
+        controlador: a tela fica desligada e é reaberta periodicamente."""
+        self._next_open = time.monotonic() + self.REOPEN_S
+        try:
+            self._fb = open(self._fb_dev, "wb")
+            if getattr(self, "_fb_failing", False):
+                print(f"\r[display] {self._fb_dev} disponível de novo.")
+            self._fb_failing = False
+        except OSError as e:
+            self._fb = None
+            if not getattr(self, "_fb_failing", False):
+                print(f"\r[display] Não foi possível abrir {self._fb_dev} ({e}) — "
+                      f"seguindo sem tela; nova tentativa a cada {self.REOPEN_S} s.")
+            self._fb_failing = True
 
     def close(self):
         if self._fb:
-            self._fb.close()
+            try:
+                self._fb.close()
+            except OSError:
+                pass
             self._fb = None
 
     def _write(self, img: Image.Image):
         """Converte RGB → RGB565 e escreve no framebuffer."""
+        if self._fb is None:
+            if time.monotonic() < getattr(self, "_next_open", 0):
+                return
+            self.open()
+            if self._fb is None:
+                return
         buf = bytearray(W * H * 2)
         idx = 0
         for r, g, b in img.getdata():
@@ -572,9 +607,15 @@ class Display:
             buf[idx]     = pixel & 0xFF   # little-endian
             buf[idx + 1] = pixel >> 8
             idx += 2
-        self._fb.seek(0)
-        self._fb.write(buf)
-        self._fb.flush()
+        try:
+            self._fb.seek(0)
+            self._fb.write(buf)
+            self._fb.flush()
+        except OSError as e:
+            print(f"\r[display] Falha ao escrever na tela ({e}) — tentando reabrir.")
+            self.close()
+            self._fb_failing = True
+            self._next_open = time.monotonic() + self.REOPEN_S
 
     def _new_frame(self):
         img  = Image.new("RGB", (W, H), C_BG)

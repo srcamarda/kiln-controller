@@ -3,8 +3,9 @@ rtc.py — Leitura do DS3231 via I2C.
 Fallback para horário do sistema se o módulo não estiver presente.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
+import time as _time
 
 try:
     import board
@@ -15,14 +16,39 @@ except (ImportError, NotImplementedError):
 
 
 class HardwareRTC:
-    def __init__(self):
-        i2c = board.I2C()
-        self._rtc = adafruit_ds3231.DS3231(i2c)
+    def __init__(self, dev=None):
+        if dev is None:
+            i2c = board.I2C()
+            dev = adafruit_ds3231.DS3231(i2c)
+        self._rtc = dev
+        self._last_good = None     # (datetime lido, time.monotonic() da leitura)
+        self._failing   = False
 
     def now(self) -> datetime:
-        t = self._rtc.datetime
-        return datetime(t.tm_year, t.tm_mon, t.tm_mday,
-                        t.tm_hour, t.tm_min, t.tm_sec)
+        """
+        Hora do DS3231. Uma leitura I2C falha (ruído perto do forno) não pode
+        derrubar o controle: nesse caso devolve a última hora boa avançada pelo
+        relógio monotônico (mantém a continuidade, importante para o cálculo
+        do tempo fora do ar na retomada); sem nenhuma leitura boa ainda, usa a
+        hora do sistema.
+        """
+        try:
+            t = self._rtc.datetime
+            dt = datetime(t.tm_year, t.tm_mon, t.tm_mday,
+                          t.tm_hour, t.tm_min, t.tm_sec)
+        except Exception as e:
+            if not self._failing:
+                print(f"\r[rtc] Falha ao ler o DS3231 ({e!r}) — usando hora estimada.")
+                self._failing = True
+            if self._last_good is not None:
+                dt0, m0 = self._last_good
+                return dt0 + timedelta(seconds=_time.monotonic() - m0)
+            return datetime.now()
+        if self._failing:
+            print("\r[rtc] Leitura do DS3231 normalizada.")
+            self._failing = False
+        self._last_good = (dt, _time.monotonic())
+        return dt
 
     def set_time(self, dt: datetime):
         import time
