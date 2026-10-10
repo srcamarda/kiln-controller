@@ -709,18 +709,29 @@ class KilnApp:
         if err:   # defesa extra: curvas já são validadas na carga e ao salvar
             self._show_message("CURVA INVÁLIDA", err, UIState.SELECTING)
             return
-        self.run_max_temp  = self.sensor.temperature
-        self.run_start_str = self.rtc.now().strftime("%H:%M")
-        self.controller.start_curve(curve, self.sensor.temperature)
+        temp = self.sensor.temperature
+        try:
+            self.controller.start_curve(curve, temp)
+        except ValueError as e:      # forno já acima do alvo final
+            self._show_message("FORNO QUENTE", str(e), UIState.SELECTING)
+            return
+        skipped = self.controller.state.skipped_segments
+        skip_txt = (f"Segmento(s) 1–{skipped} já atingido(s); começando no {skipped + 1}."
+                    if skipped else "")
+        self.run_max_temp  = temp
+        self.run_start_str = self._wall_dt().strftime("%H:%M")
         self.hb.start(f"Queima iniciada: {curve['name']}")
         self.flog.start("curve", curve["name"], curve, self._log_params(),
-                        self._wall_dt(), self.sensor.temperature)
+                        self._wall_dt(), temp)
+        if skip_txt:
+            self.flog.event(skip_txt, self._log_row(self.controller.state, temp), self._wall_dt())
         self.ui = UIState.RUNNING
         self.last_hourly_announcement = 0
-        
+
         # Envia alerta do Telegram
         self.notifier.send(f"🔥 {b('Queima iniciada')}\nCurva: {esc(curve['name'])}\n"
-                           f"Temp. atual: {self.sensor.temperature:.1f}°C")
+                           f"Temp. atual: {temp:.1f}°C"
+                           + (f"\n{esc(skip_txt)}" if skip_txt else ""))
 
     def _start_preheat(self):
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)

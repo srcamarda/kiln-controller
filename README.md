@@ -107,6 +107,7 @@ As curvas ficam em `curves.json` (ou no caminho de `KILN_CURVES_FILE`). Limites:
 - Gravação atômica: uma queda de energia durante o salvamento não corrompe o arquivo; a versão anterior fica em `curves.json.bak`.
 - Na inicialização, curvas inválidas (ex.: editadas à mão com erro) são ignoradas com aviso no console e no Telegram, em vez de impedir o programa de subir. Se o arquivo estiver corrompido, usa o `.bak`.
 - Erros ao salvar pelo encoder aparecem na tela.
+- Forno já quente ao iniciar (ex.: logo após um pré-aquecimento): os segmentos cujo alvo já foi atingido são pulados (aviso no registro da queima e no Telegram). Se o forno estiver acima do alvo final, a curva não inicia ("FORNO QUENTE"). No pré-aquecimento com o forno acima do alvo, a margem de sobretemperatura vale sobre a temperatura de partida até ele esfriar até o alvo.
 
 ## Registro das queimas
 

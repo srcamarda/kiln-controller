@@ -95,6 +95,15 @@ class ControllerState:
     # Pré-aquecimento
     preheat_target:   float          = 200.0
     preheat_start_time: Optional[float] = None   # monotonic
+    # Teto temporário para a sobretemperatura no pré-aquecimento quando o forno
+    # já está acima do alvo (começou quente ou o alvo foi reduzido); 0 = sem teto.
+    preheat_ceiling:  float          = 0.0
+
+    # Última temperatura recebida em update()
+    last_temp:        float          = 0.0
+
+    # Segmentos pulados no início porque o forno já estava acima do alvo deles
+    skipped_segments: int            = 0
 
     # Saídas
     bank_a:           bool           = False
@@ -142,10 +151,27 @@ class KilnController:
     # ── API pública ────────────────────────────
 
     def start_curve(self, curve: dict, start_temp: float):
-        """Inicia uma curva de queima a partir da temperatura atual."""
+        """
+        Inicia uma curva de queima a partir da temperatura atual.
+
+        Se o forno já estiver quente (ex.: logo após um pré-aquecimento), os
+        segmentos cujo alvo já foi atingido são pulados — sem isso, o alvo do
+        1º segmento ficaria abaixo da temperatura e a sobretemperatura relativa
+        dispararia na hora. Levanta ValueError se o forno já passou do alvo final.
+        """
+        segs  = curve["segments"]
+        final = float(segs[-1]["target_temp"])
+        if start_temp > final:
+            raise ValueError(f"Forno a {start_temp:.0f}°C, acima do alvo final da curva "
+                             f"({final:.0f}°C). Espere esfriar.")
+        idx = 0
+        while idx < len(segs) - 1 and start_temp >= float(segs[idx]["target_temp"]) - HYSTERESIS:
+            idx += 1
+
         s = self.state
         s.curve              = curve
-        s.segment_index      = 0
+        s.segment_index      = idx
+        s.skipped_segments   = idx
         s.segment_start_temp = start_temp
         s.segment_start_time = time.monotonic()
         s.run_start_time     = time.monotonic()
@@ -154,7 +180,8 @@ class KilnController:
         self._reset_rate()
         self._reset_safety()
         self._set_segment_deadline()
-        _log(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C")
+        _log(f"[ctrl] Iniciando curva '{curve['name']}' em {start_temp:.1f}°C"
+             + (f" — {idx} segmento(s) já atingido(s), começando no {idx + 1}" if idx else ""))
 
     def start_preheat(self, target: float, current_temp: float):
         """Inicia modo pré-aquecimento com alvo fixo."""
@@ -166,6 +193,9 @@ class KilnController:
         self._reset_safety()
         self.state.preheat_start_time = time.monotonic()
         self.state.segment_deadline = self.state.preheat_start_time + PREHEAT_MAX_S
+        # Forno já acima do alvo: a margem de sobretemperatura vale sobre a
+        # temperatura de partida até ele esfriar até o alvo
+        self.state.preheat_ceiling = current_temp if current_temp > target else 0.0
         _log(f"[ctrl] Pré-aquecimento → {target:.0f}°C")
 
     def stop(self):
@@ -228,6 +258,7 @@ class KilnController:
             elapsed = snap.get("preheat_elapsed_s", 0.0)
             s.mode = ControllerMode.PREHEAT
             s.preheat_start_time = now - elapsed
+            s.preheat_ceiling    = temp if temp > s.preheat_target else 0.0
             s.segment_deadline   = s.preheat_start_time + PREHEAT_MAX_S
             desc = f"pré-aquecimento a {s.preheat_target:.0f} °C"
             _log(f"[ctrl] Retomando {desc}")
@@ -264,7 +295,11 @@ class KilnController:
 
     def set_preheat_target(self, target: float):
         target = max(PREHEAT_MIN, min(PREHEAT_MAX, target))
-        self.state.preheat_target = target
+        s = self.state
+        s.preheat_target = target
+        # Alvo reduzido abaixo da temperatura atual: não é sobretemperatura
+        if s.mode == ControllerMode.PREHEAT and s.last_temp > target:
+            s.preheat_ceiling = max(s.preheat_ceiling, s.last_temp)
 
     # ── Tick principal ─────────────────────────
 
@@ -285,6 +320,7 @@ class KilnController:
             s.bank_b = False
             return s
 
+        s.last_temp = temp
         self._update_rate(temp)
 
         # Limites que independem do modo (usam os bancos do ciclo anterior,
@@ -316,6 +352,9 @@ class KilnController:
 
     def _run_preheat(self, temp: float):
         s = self.state
+        if s.preheat_ceiling:
+            # Esfriando até o alvo: o teto acompanha a queda; atingido o alvo, some
+            s.preheat_ceiling = 0.0 if temp <= s.preheat_target else min(s.preheat_ceiling, temp)
         s.setpoint = s.preheat_target
         s.bank_b   = self._gate("b", False)
         s.bank_a   = self._gate("a", self._hysteresis(temp, s.setpoint, s.bank_a))
@@ -512,7 +551,7 @@ class KilnController:
     def _mode_target(self) -> Optional[float]:
         s = self.state
         if s.mode == ControllerMode.PREHEAT:
-            return float(s.preheat_target)
+            return max(float(s.preheat_target), s.preheat_ceiling)
         if s.mode == ControllerMode.RAMPING:
             return float(s.curve["segments"][s.segment_index]["target_temp"])
         if s.mode == ControllerMode.SOAKING:
