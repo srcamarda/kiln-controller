@@ -29,6 +29,10 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+# relays PRIMEIRO: registra o handler que força os pinos dos relés em HIGH na
+# saída antes de qualquer módulo importar o gpiozero (ver relays.py).
+from relays        import create_relays, HardwareRelays
+
 from config        import (load_env_file, telegram_config, telegram_admin_ids,
                             heartbeat_config)
 from heartbeat     import Heartbeat, describe as hb_describe
@@ -43,7 +47,6 @@ from controller    import (KilnController, ControllerMode, ErrorKind,
                             RUNAWAY_RISE, OVERTEMP_ABS)
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
-from relays        import create_relays, HardwareRelays
 from rtc           import create_rtc
 from curves_manager import (load_curves, save_curves,
                              next_curve_name, new_curve_template,

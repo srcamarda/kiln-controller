@@ -85,7 +85,7 @@ Camadas de proteção:
 
 - **Watchdog do serviço** (`WatchdogSec=30`): se o loop principal travar, o systemd mata e reinicia o processo.
 - **Watchdog de hardware** (`RuntimeWatchdogSec=14`): se o Pi/kernel travar, o Pi reinicia sozinho.
-- **Relés desligados ao sair**: `deploy/relays-off.sh` roda sempre que o processo termina (inclusive morto pelo watchdog) e força GPIO13/16 em HIGH.
+- **Relés desligados ao sair**: o próprio programa, ao encerrar (Ctrl+C, `systemctl stop`, erro), força GPIO13/16 em HIGH com `pinctrl` depois que o gpiozero libera os pinos — rodando à mão também. Sob o systemd, `deploy/relays-off.sh` faz o mesmo no ExecStopPost, cobrindo também o processo morto pelo watchdog.
 - **Relés desligados no boot**: `gpio=13,16=op,dh` no `config.txt` faz o firmware do Pi colocar os pinos em HIGH (relés desligados no HL-52S) antes do Linux subir.
 
 ## Retomada da queima após reinício
