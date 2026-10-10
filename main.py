@@ -337,6 +337,7 @@ class KilnApp:
         self.sensor.update(state.bank_a, state.bank_b)
         self.relays.set(state.bank_a, state.bank_b)
         self._persist_firing(temp)
+        self._send_alarms(state, temp)
 
         # Registro da queima (uma linha por ciclo; resfriamento após o fim)
         wall = self._wall_dt()
@@ -752,6 +753,23 @@ class KilnApp:
     # ──────────────────────────────────────────────
     # Persistência / retomada da queima
     # ──────────────────────────────────────────────
+
+    def _send_alarms(self, state, temp):
+        """Alertas que não mudam o modo do controlador (vigilância pós-ERRO,
+        termopar em falha com o forno parado)."""
+        seen = getattr(self, "_alarm_seen", 0)
+        if state.alarm_count == seen:
+            return
+        self._alarm_seen = state.alarm_count
+        msg = state.alarm_message
+        if state.alarm_critical:
+            self.notifier.send(f"🚨 {b('ALERTA')}\n{esc(msg)}\nTemp. atual: {temp:.1f}°C",
+                               critical=True)
+            if state.alarm_kind == "watch":     # forno esquentando após ERRO
+                self.hb.fail(msg)
+        else:
+            self.notifier.send(f"✅ {esc(msg)}\nTemp. atual: {temp:.1f}°C")
+        self.flog.event(f"ALERTA: {msg}", self._log_row(state, temp), self._wall_dt())
 
     def _wall_dt(self):
         try:

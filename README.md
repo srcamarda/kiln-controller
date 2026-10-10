@@ -65,6 +65,10 @@ Qualquer um destes desliga os relés e trava em ERRO (tela + alerta no Telegram)
 - **Temp. não sobe**: com aquecimento ligado e mais de 10 °C abaixo do setpoint, a temperatura não sobe 10 °C em 40 min (resistência queimada, termopar fora do lugar).
 - **Tempo excedido**: segmento acima de 2× a duração teórica + 1 h; pré-aquecimento acima de 24 h.
 
+Depois de um ERRO a vigilância continua: se a temperatura passar de 1300 °C ou subir mais de 30 °C com os relés desligados (contator colado), sai um novo alerta no Telegram (e falha no healthchecks.io), repetido a cada 10 min enquanto continuar subindo.
+
+Falha do termopar **com o forno parado** não trava em ERRO: o controlador avisa que está sem vigilância e, quando a leitura volta, avisa de novo e retoma as verificações. Durante uma queima, falha do termopar por mais de 15 s continua abortando (ERRO).
+
 Esses limites não substituem um limitador de sobretemperatura **em hardware**, em série com os contatores: se o Raspberry Pi travar ou um contator colar, o software não consegue desligar o forno.
 
 ## Execução como serviço (systemd)

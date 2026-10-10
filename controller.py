@@ -53,6 +53,9 @@ SEGMENT_TIMEOUT_FACTOR = 2.0  # × duração teórica do segmento
 SEGMENT_TIMEOUT_EXTRA_S = 60 * 60  # s — folga somada ao tempo teórico
 PREHEAT_MAX_S       = 24 * 3600    # s — duração máxima do pré-aquecimento
 
+ALARM_REPEAT_S      = 10 * 60 # s — repete o alerta pós-ERRO enquanto a temperatura subir
+ALARM_REPEAT_RISE   = 10.0    # °C — subida mínima desde o último alerta para repetir
+
 # ── Retomada após reinício ────────────────────
 SOAK_RESUME_BAND    = 30.0    # °C — no soak, se esfriou mais que isso volta a rampar
 
@@ -104,6 +107,17 @@ class ControllerState:
 
     # Segmentos pulados no início porque o forno já estava acima do alvo deles
     skipped_segments: int            = 0
+
+    # Alertas que não mudam o modo (vigilância pós-ERRO, termopar com forno
+    # parado). O main envia uma mensagem sempre que alarm_count aumenta.
+    alarm_count:      int            = 0
+    alarm_message:    str            = ""
+    alarm_critical:   bool           = False
+    alarm_kind:       str            = ""      # "watch" (pós-ERRO), "sensor", "sensor_ok"
+    sensor_blind:     bool           = False   # termopar em falha com o forno parado
+    _alarm_last:      Optional[tuple] = None   # (t, temp) do último alerta pós-ERRO
+    _blind_alarm_t:   Optional[float] = None
+    _blind_pending:   bool           = False   # avisou a falha; falta avisar a volta
 
     # Saídas
     bank_a:           bool           = False
@@ -311,13 +325,40 @@ class KilnController:
         s = self.state
 
         if fault:
-            self._fault(ErrorKind.SENSOR, "Falha no termopar",
-                        "Falha no termopar detectada.")
+            if self.is_active():
+                # Queima em andamento sem leitura: aborta (travado em ERRO)
+                self._fault(ErrorKind.SENSOR, "Falha no termopar",
+                            "Falha no termopar detectada.")
+            else:
+                # Forno parado (OFF/FINISHED/ERROR): relés já desligados; não trava
+                # em ERRO (antes isso desligava a vigilância em silêncio). Avisa
+                # que a vigilância está suspensa até a leitura voltar.
+                s.bank_a = False
+                s.bank_b = False
+                if not s.sensor_blind:
+                    s.sensor_blind = True
+                    now = time.monotonic()
+                    if s._blind_alarm_t is None or now - s._blind_alarm_t >= ALARM_REPEAT_S:
+                        s._blind_alarm_t = now
+                        s._blind_pending = True
+                        self._raise_alarm("Falha no termopar com o forno parado — sem "
+                                          "vigilância de temperatura até a leitura voltar.",
+                                          critical=True, kind="sensor")
             return s
 
+        if s.sensor_blind:
+            s.sensor_blind = False
+            if s._blind_pending:
+                s._blind_pending = False
+                self._raise_alarm("Leitura do termopar normalizada — vigilância retomada.",
+                                  critical=False, kind="sensor_ok")
+
         if s.mode == ControllerMode.ERROR:
+            # Relés desligados e travado, mas a vigilância continua
             s.bank_a = False
             s.bank_b = False
+            s.last_temp = temp
+            self._watch_after_error(temp)
             return s
 
         s.last_temp = temp
@@ -536,6 +577,7 @@ class KilnController:
         s._stall_ref    = None
         s._runaway_ref  = None
         s._switched_at  = {"a": None, "b": None}
+        s._alarm_last   = None
 
     def _set_segment_deadline(self):
         """Prazo do segmento atual: duração teórica × fator + folga."""
@@ -603,6 +645,43 @@ class KilnController:
 
         return False
 
+    def _watch_after_error(self, temp: float):
+        """
+        Em ERRO os relés estão desligados, mas um contator colado continua
+        aquecendo. Mantém as checagens de sobretemperatura absoluta e de
+        "aquece desligado" e alerta de novo a cada ALARM_REPEAT_S enquanto
+        a temperatura continuar subindo.
+        """
+        s   = self.state
+        now = time.monotonic()
+        if s._runaway_ref is None or temp < s._runaway_ref:
+            s._runaway_ref = temp
+
+        cond = None
+        if temp > OVERTEMP_ABS:
+            cond = (f"Temperatura em {temp:.0f} °C, acima do limite absoluto de "
+                    f"{OVERTEMP_ABS:.0f} °C, com os relés desligados.")
+        elif temp - s._runaway_ref > RUNAWAY_RISE:
+            cond = (f"O forno continua esquentando com os relés desligados: "
+                    f"{s._runaway_ref:.0f} → {temp:.0f} °C.")
+        if cond is None:
+            return
+
+        last = s._alarm_last
+        if last is None or (now - last[0] >= ALARM_REPEAT_S
+                            and temp >= last[1] + ALARM_REPEAT_RISE):
+            s._alarm_last = (now, temp)
+            self._raise_alarm(cond + " Verificar contatores — desligue a alimentação "
+                                     "do forno.", critical=True)
+
+    def _raise_alarm(self, message: str, critical: bool = True, kind: str = "watch"):
+        s = self.state
+        s.alarm_kind     = kind
+        s.alarm_count   += 1
+        s.alarm_message  = message
+        s.alarm_critical = critical
+        _log(f"[ctrl] ALERTA: {message}")
+
     def _check_stall(self, temp: float):
         """Aquecimento comandado, abaixo do setpoint, e a temperatura não sobe."""
         s = self.state
@@ -636,6 +715,11 @@ class KilnController:
         s.error_kind    = kind
         s.error_title   = title
         s.error_message = message
+        # Para sobretemperatura/aquece-desligado o próprio ERRO já é o 1º alerta;
+        # a vigilância só repete depois de ALARM_REPEAT_S e se continuar subindo.
+        # Para os demais, uma subida posterior com relés desligados alerta na hora.
+        s._alarm_last = ((time.monotonic(), s.last_temp)
+                         if kind in (ErrorKind.OVERTEMP, ErrorKind.RUNAWAY) else None)
         _log(f"[ctrl] ERRO ({kind.name}): {message} Relés desligados.")
 
     # ── Helpers de consulta ────────────────────
