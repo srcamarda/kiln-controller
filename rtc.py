@@ -14,6 +14,14 @@ try:
 except (ImportError, NotImplementedError):
     _HW_AVAILABLE = False
 
+# Hora anterior a isto é sinal de relógio zerado: o DS3231 volta a 2000-01-01
+# quando perde a alimentação (bateria fraca) e o Pi sem rede pode bootar em 1970.
+MIN_VALID_YEAR = 2025
+
+
+def clock_plausible(dt: datetime) -> bool:
+    return dt.year >= MIN_VALID_YEAR
+
 
 class HardwareRTC:
     def __init__(self, dev=None):
@@ -50,6 +58,22 @@ class HardwareRTC:
         self._last_good = (dt, _time.monotonic())
         return dt
 
+    def time_valid(self) -> bool:
+        """
+        False se a hora não merece confiança: o DS3231 indica que o oscilador
+        parou (flag OSF / lost_power — bateria fraca ou ausente), a hora lida
+        é implausível, ou não há nenhuma leitura boa (hora do sistema).
+        """
+        dt = self.now()
+        if self._last_good is None:
+            return False
+        try:
+            if getattr(self._rtc, "lost_power", False) is True:
+                return False
+        except Exception:
+            pass
+        return clock_plausible(dt)
+
     def set_time(self, dt: datetime):
         import time
         self._rtc.datetime = time.struct_time(
@@ -62,6 +86,9 @@ class HardwareRTC:
 class SystemRTC:
     def now(self) -> datetime:
         return datetime.now()
+
+    def time_valid(self) -> bool:
+        return clock_plausible(self.now())
 
     def set_time(self, dt: datetime):
         pass  # sistema sem permissão para ajustar RTC externo
@@ -77,6 +104,9 @@ def create_rtc():
             rtc = HardwareRTC()
             _ = rtc.now()
             print("\r[rtc] DS3231 detectado - Usando hardware.")
+            if not rtc.time_valid():
+                print("\r[rtc] AVISO: hora do DS3231 não confiável (oscilador parou ou "
+                      "data zerada) — troque a bateria e rode sync_rtc.py.")
             return rtc
         except Exception as e:
             print(f"\r[rtc] DS3231 falhou ({e}) — usando horário do sistema.")

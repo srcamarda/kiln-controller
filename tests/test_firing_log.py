@@ -242,6 +242,24 @@ class TestUnidade(unittest.TestCase):
                 log.close()
         self.assertEqual(len([f for f in os.listdir(d) if f.endswith(".csv")]), 3)
 
+    def test_retencao_com_relogio_zerado_mantem_a_nova(self):
+        d = tempfile.mkdtemp()
+        with mock.patch.object(firing_log, "MAX_FIRINGS", 3):
+            log = FiringLog(d)
+            for i in range(3):
+                log.start("curve", f"c{i}", CURVE, {}, datetime(2026, 10, 1, 10, i), 25.0)
+                log.close()
+            for i, f in enumerate(sorted(os.listdir(d))):
+                os.utime(os.path.join(d, f), (1_000_000 + i, 1_000_000 + i))
+            # DS3231 zerado: a queima nova recebe nome de 2000 (ordenaria primeiro)
+            log.start("curve", "nova", CURVE, {}, datetime(2000, 1, 1, 0, 1), 25.0)
+            new = log.path
+            log.close()
+        csvs = sorted(f for f in os.listdir(d) if f.endswith(".csv"))
+        self.assertEqual(len(csvs), 3)
+        self.assertIn(os.path.basename(new), csvs)
+        self.assertNotIn("20261001-100000_c0.csv", csvs)
+
 
 if __name__ == "__main__":
     unittest.main()

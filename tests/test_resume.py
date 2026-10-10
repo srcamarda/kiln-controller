@@ -249,6 +249,121 @@ class TestMainResume(unittest.TestCase):
         app._try_resume()
         self.assertEqual(app.ui, self.main.UIState.IDLE)
 
+    # ── M1: hora não confiável ──────────────────────────────────────────
+
+    Y2000 = datetime(2000, 1, 1, 0, 5).timestamp()   # DS3231 zerado (bateria fraca)
+
+    def _assert_retomou_sem_hora(self, app):
+        self.assertEqual(app.ui, self.main.UIState.RUNNING)
+        txt = app.notifier.send.call_args.args[0]
+        self.assertIn("desconhecido", txt)
+        self.assertIn("sync_rtc.py", txt)
+
+    def test_estado_guarda_validade_do_relogio(self):
+        self._save_running()
+        self.assertIs(firing_state.load()["clock_ok"], True)
+
+    def test_relogio_zerado_pouca_queda_retoma(self):
+        self._save_running(700)
+        self.wall = self.Y2000
+        app = self._app(680)
+        app._try_resume()
+        self._assert_retomou_sem_hora(app)
+
+    def test_relogio_zerado_muita_queda_nao_retoma(self):
+        self._save_running(700)
+        self.wall = self.Y2000
+        app = self._app(700 - self.main.MAX_DROP_UNKNOWN_TIME - 20)
+        app._try_resume()
+        self.assertEqual(app.controller.state.error_kind, ErrorKind.INTERRUPTED)
+        self.assertIn("desconhecido", app.notifier.send.call_args.args[0])
+        self.assertIsNone(firing_state.load())
+
+    def test_relogio_voltou_e_tratado_como_desconhecido(self):
+        self._save_running(700)
+        self.wall -= 3600                     # ano plausível, mas antes do último registro
+        app = self._app(650)
+        app._try_resume()
+        self._assert_retomou_sem_hora(app)
+
+        self._save_running(700)
+        self.wall -= 3600
+        app = self._app(500)
+        app._try_resume()
+        self.assertEqual(app.controller.state.error_kind, ErrorKind.INTERRUPTED)
+
+    def test_pequeno_atraso_do_relogio_e_tolerado(self):
+        self._save_running(700)
+        self.wall -= 60
+        app = self._app(500)                  # esfriou bastante, mas a hora é confiável
+        app._try_resume()
+        self.assertEqual(app.ui, self.main.UIState.RUNNING)
+        self.assertNotIn("desconhecido", app.notifier.send.call_args.args[0])
+
+    def test_ds3231_perdeu_energia_ignora_tempo_calculado(self):
+        self._save_running(700)
+        self.wall += self.main.MAX_RESUME_DOWNTIME_S + 3600   # "5 h", mas a hora não vale
+        app = self._app(690)
+        app.rtc.time_valid.return_value = False
+        app._try_resume()
+        self._assert_retomou_sem_hora(app)
+
+    def test_relogio_invalido_durante_a_queima(self):
+        self._save_running(700, clock_ok=False)
+        self.wall += 60
+        app = self._app(600)
+        app._try_resume()
+        self.assertEqual(app.controller.state.error_kind, ErrorKind.INTERRUPTED)
+
+    def test_estado_antigo_sem_campo_clock_ok(self):
+        self._save_running(700)
+        snap = firing_state.load()
+        del snap["clock_ok"]
+        firing_state.save(snap)
+        self.wall += 90
+        app = self._app(690)
+        app._try_resume()
+        self.assertEqual(app.ui, self.main.UIState.RUNNING)
+
+
+class TestValidadeRelogio(unittest.TestCase):
+
+    class Dev:
+        def __init__(self, dt, lost=False):
+            self.dt, self.lost_power, self.fail = dt, lost, False
+
+        @property
+        def datetime(self):
+            if self.fail:
+                raise OSError("i2c")
+            return self.dt.timetuple()
+
+    def test_hora_boa(self):
+        import rtc
+        self.assertTrue(rtc.HardwareRTC(self.Dev(datetime(2026, 10, 10, 9))).time_valid())
+
+    def test_oscilador_parou(self):
+        import rtc
+        self.assertFalse(rtc.HardwareRTC(self.Dev(datetime(2026, 10, 10, 9), lost=True)).time_valid())
+
+    def test_data_zerada(self):
+        import rtc
+        self.assertFalse(rtc.HardwareRTC(self.Dev(datetime(2000, 1, 1))).time_valid())
+
+    def test_sem_leitura_boa(self):
+        import contextlib, io, rtc
+        dev = self.Dev(datetime(2026, 10, 10, 9))
+        dev.fail = True
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(rtc.HardwareRTC(dev).time_valid())
+
+    def test_system_rtc(self):
+        import rtc
+        with mock.patch.object(rtc.SystemRTC, "now", return_value=datetime(1970, 1, 1, 0, 1)):
+            self.assertFalse(rtc.SystemRTC().time_valid())
+        with mock.patch.object(rtc.SystemRTC, "now", return_value=datetime(2026, 10, 10)):
+            self.assertTrue(rtc.SystemRTC().time_valid())
+
 
 class TestSdNotify(unittest.TestCase):
 

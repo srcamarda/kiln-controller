@@ -329,11 +329,27 @@ class FiringLog:
         return s
 
     def _prune(self):
+        """
+        Mantém as MAX_FIRINGS queimas mais recentes. Ordena pela data de
+        modificação do arquivo, não pelo nome: o nome vem da hora do RTC, que
+        pode estar errada (bateria fraca → 2000-01-01) e faria a queima nova
+        parecer a mais antiga. O arquivo em uso nunca é apagado.
+        """
+        current = os.path.basename(self.path) if self.path else None
+
+        def mtime(name):
+            try:
+                return os.path.getmtime(os.path.join(self.log_dir, name))
+            except OSError:
+                return 0.0
         try:
-            csvs = sorted(f for f in os.listdir(self.log_dir) if f.endswith(".csv"))
+            csvs = [f for f in os.listdir(self.log_dir) if f.endswith(".csv")]
         except OSError:
             return
+        csvs.sort(key=lambda f: (f == current, mtime(f), f))
         for old in csvs[:-MAX_FIRINGS]:
+            if old == current:
+                continue
             for ext in (".csv", ".json"):
                 try:
                     os.remove(os.path.join(self.log_dir, os.path.splitext(old)[0] + ext))

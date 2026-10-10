@@ -47,7 +47,7 @@ from controller    import (KilnController, ControllerMode, ErrorKind,
                             RUNAWAY_RISE, OVERTEMP_ABS)
 from display       import Display
 from encoder       import create_encoder, EncoderEvent
-from rtc           import create_rtc
+from rtc           import create_rtc, clock_plausible
 from curves_manager import (load_curves, save_curves,
                              next_curve_name, new_curve_template,
                              validate_curve,
@@ -73,6 +73,8 @@ STATE_SAVE_S            = 60        # grava o estado da queima a cada N s
 MAX_RESUME_DOWNTIME_S   = 4 * 3600  # fora do ar por mais que isso → não retoma
 MAX_RESUMES             = 3         # retomadas permitidas dentro da janela abaixo
 RESUME_WINDOW_S         = 3600      #   (mais que isso indica problema recorrente)
+CLOCK_BACK_TOLERANCE_S  = 300       # hora atual antes de saved_at além disso → relógio errado
+MAX_DROP_UNKNOWN_TIME   = 60        # °C: com a hora não confiável, só retoma se esfriou até isso
 
 MENU_OPTIONS = [
     "Curvas de Queima",
@@ -864,6 +866,17 @@ class KilnApp:
         except Exception:
             return time.time()
 
+    def _clock_ok(self) -> bool:
+        """A hora do RTC merece confiança para medir o tempo fora do ar?"""
+        try:
+            fn = getattr(self.rtc, "time_valid", None)
+            v = fn() if callable(fn) else None
+        except Exception:
+            v = None
+        if isinstance(v, bool):
+            return v
+        return clock_plausible(self._wall_dt())
+
     def _persist_firing(self, temp: float, force: bool = False):
         """Grava o estado da queima periodicamente e ao mudar de segmento/modo.
         Remove o arquivo quando o controlador deixa de estar ativo
@@ -883,6 +896,7 @@ class KilnApp:
         snap = ctrl.snapshot(temp)
         snap.update({
             "saved_at":      self._wall_time(),
+            "clock_ok":      self._clock_ok(),
             "run_max_temp":  self.run_max_temp,
             "run_start_str": self.run_start_str,
             "resume_times":  self._resume_times,
@@ -915,13 +929,33 @@ class KilnApp:
         temp      = self.sensor.temperature
         now_wall  = self._wall_time()
         saved_at  = snap.get("saved_at")
-        downtime  = max(0.0, now_wall - saved_at) if saved_at else 0.0
         last_temp = snap.get("last_temp", temp)
         recent    = [t for t in snap.get("resume_times", [])
                      if now_wall - t < RESUME_WINDOW_S]
 
+        # Tempo fora do ar só é confiável se o relógio estava e está certo e
+        # não andou para trás. Senão (bateria do DS3231 fraca → ano 2000, Pi
+        # sem rede usando a hora do sistema) ele fica "desconhecido" e a
+        # decisão passa a ser pela queda de temperatura desde o último registro.
+        clock_issue = None
+        if not saved_at:
+            clock_issue = "estado salvo sem horário"
+        elif snap.get("clock_ok") is False:
+            clock_issue = "relógio já estava sem hora confiável durante a queima"
+        elif not self._clock_ok():
+            clock_issue = "relógio sem hora confiável (bateria do DS3231?)"
+        elif now_wall < saved_at - CLOCK_BACK_TOLERANCE_S:
+            clock_issue = (f"relógio voltou {(saved_at - now_wall) / 60:.0f} min "
+                           f"em relação ao último registro")
+        downtime = 0.0 if clock_issue else max(0.0, now_wall - saved_at)
+        drop     = last_temp - temp
+
         problem = None
-        if downtime > MAX_RESUME_DOWNTIME_S:
+        if clock_issue and drop > MAX_DROP_UNKNOWN_TIME:
+            problem = (f"tempo fora do ar desconhecido ({clock_issue}) e a "
+                       f"temperatura caiu {drop:.0f} °C (de {last_temp:.0f} para "
+                       f"{temp:.0f} °C; limite {MAX_DROP_UNKNOWN_TIME} °C)")
+        elif downtime > MAX_RESUME_DOWNTIME_S:
             problem = (f"controlador ficou {downtime / 3600:.1f} h fora do ar "
                        f"(limite {MAX_RESUME_DOWNTIME_S / 3600:.0f} h)")
         elif len(recent) >= MAX_RESUMES:
@@ -946,9 +980,11 @@ class KilnApp:
             return
 
         desc = self.controller.resume(snap, temp, downtime)
-        self.hb.start(f"Queima retomada após {downtime / 60:.0f} min: {desc}")
+        off_str = (f"tempo desconhecido ({clock_issue})" if clock_issue
+                   else f"{downtime / 60:.0f} min")
+        self.hb.start(f"Queima retomada (fora do ar: {off_str}): {desc}")
         if self.flog.attach(snap.get("log_file"), desc, downtime):
-            self.flog.event(f"RETOMADA após {downtime / 60:.0f} min fora do ar "
+            self.flog.event(f"RETOMADA após {off_str} fora do ar "
                             f"(era {last_temp:.1f} °C): {desc}",
                             self._log_row(self.controller.state, temp), self._wall_dt())
         self._resume_times = recent + [now_wall]
@@ -960,11 +996,13 @@ class KilnApp:
                    else UIState.RUNNING)
         self._persist_firing(temp, force=True)
 
-        print(f"\r[main] Queima retomada após {downtime / 60:.0f} min fora do ar: {desc}")
+        print(f"\r[main] Queima retomada (fora do ar: {off_str}): {desc}")
+        warn = (f"\n⚠️ Hora do controlador não confiável — confira a bateria do "
+                f"DS3231 e rode sync_rtc.py." if clock_issue else "")
         self.notifier.send(f"♻️ {b('Queima retomada após reinício.')}\n"
-                           f"Fora do ar: {downtime / 60:.0f} min\n"
+                           f"Fora do ar: {esc(off_str)}\n"
                            f"Temp. atual: {temp:.1f}°C (era {last_temp:.1f}°C)\n"
-                           f"Retomando: {esc(desc)}", critical=True)
+                           f"Retomando: {esc(desc)}{warn}", critical=True)
 
     def _begin_new_curve(self):
         name = next_curve_name(self.curves)

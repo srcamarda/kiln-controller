@@ -103,6 +103,8 @@ Durante uma queima o estado é gravado (a cada 60 s e a cada troca de segmento) 
 - houve 3 retomadas na última hora (falha recorrente);
 - a temperatura subiu mais de 30 °C com o controlador fora do ar (contator colado?).
 
+O tempo fora do ar vem do DS3231. Se a hora não for confiável — oscilador do DS3231 parado (bateria fraca: a data volta para 2000), sem leitura do RTC, ou hora atual mais de 5 min antes do último registro — o tempo fica **desconhecido** e a decisão passa a ser pela temperatura: retoma só se o forno esfriou no máximo 60 °C desde o último registro (indício de queda curta); caso contrário não retoma. Na retomada com hora desconhecida, o aviso no Telegram pede para conferir a bateria e rodar `sync_rtc.py`. O mesmo aviso aparece no log ao iniciar. Os registros das queimas são limpos pela data de modificação do arquivo, então uma queima nova com nome de 2000 não é apagada.
+
 Queima concluída, cancelada (encoder ou `/stop`) ou em ERRO apaga o estado. `systemctl stop`/reboot **não** apaga: a queima é retomada no próximo start. Para abandonar uma queima sem o encoder: `sudo rm /var/lib/kiln-controller/firing.json` com o serviço parado.
 
 ## Curvas
