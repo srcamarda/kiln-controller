@@ -19,6 +19,7 @@ ExecStopPost (cobre também SIGKILL/watchdog, quando o atexit não roda).
 """
 
 import atexit
+import threading
 import os
 import shutil
 import subprocess
@@ -92,6 +93,8 @@ class HardwareRelays:
     def __init__(self, pin_a, pin_b):
         self._state_a = False
         self._state_b = False
+        self._lock = threading.Lock()
+        self._held_off = False
         _REGISTERED_PINS.update({pin_a, pin_b})
 
         # initial_value=False garante que o relé inicie desligado 
@@ -108,19 +111,38 @@ class HardwareRelays:
         )
 
     def set(self, bank_a: bool, bank_b: bool):
-        if bank_a != self._state_a:
-            self._relay_a.value = bank_a
-            self._state_a = bank_a
-        if bank_b != self._state_b:
-            self._relay_b.value = bank_b
-            self._state_b = bank_b
+        with self._lock:
+            if self._held_off:                 # trava do /stop remoto
+                bank_a = bank_b = False
+            if bank_a != self._state_a:
+                self._relay_a.value = bank_a
+                self._state_a = bank_a
+            if bank_b != self._state_b:
+                self._relay_b.value = bank_b
+                self._state_b = bank_b
 
     def off(self):
         """Desliga tudo — usar em shutdown e erros. Escreve sempre nos pinos
         (não confia no estado em cache)."""
-        self._relay_a.value = False
-        self._relay_b.value = False
-        self._state_a = self._state_b = False
+        with self._lock:
+            self._relay_a.value = False
+            self._relay_b.value = False
+            self._state_a = self._state_b = False
+
+    def hold_off(self):
+        """Desliga e trava: set() não liga mais nada até release(). Usado pelo
+        /stop remoto quando o loop principal não responde (thread-safe)."""
+        with self._lock:
+            self._held_off = True
+        self.off()
+
+    def release(self):
+        with self._lock:
+            self._held_off = False
+
+    @property
+    def held_off(self) -> bool:
+        return self._held_off
 
     def cleanup(self):
         # NÃO chama close(): fechar devolve o pino como entrada (= relé podendo
@@ -138,14 +160,32 @@ class SimulatedRelays:
     def __init__(self):
         self._state_a = False
         self._state_b = False
+        self._lock = threading.Lock()
+        self._held_off = False
 
     def set(self, bank_a: bool, bank_b: bool):
-        if bank_a != self._state_a or bank_b != self._state_b:
-            self._state_a = bank_a
-            self._state_b = bank_b
+        with self._lock:
+            if self._held_off:
+                bank_a = bank_b = False
+            if bank_a != self._state_a or bank_b != self._state_b:
+                self._state_a = bank_a
+                self._state_b = bank_b
 
     def off(self):
         self.set(False, False)
+
+    def hold_off(self):
+        with self._lock:
+            self._held_off = True
+        self.off()
+
+    def release(self):
+        with self._lock:
+            self._held_off = False
+
+    @property
+    def held_off(self) -> bool:
+        return self._held_off
 
     def cleanup(self):
         self.off()

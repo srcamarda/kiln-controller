@@ -119,7 +119,7 @@ class TestStopRemoto(Base):
         with mock.patch.object(self.main, "REMOTE_TIMEOUT_S", 0.2):
             result = self.run_remote(self.app._remote_stop_request, drain=False)
         self.assertIn("não respondeu", result)
-        self.app.relays.off.assert_called()
+        self.app.relays.hold_off.assert_called()
 
     def test_ciclo_de_controle_nao_desfaz_o_stop(self):
         """Antes: o /stop rodava em outra thread e o próximo ciclo podia religar."""
@@ -129,6 +129,83 @@ class TestStopRemoto(Base):
         s = self.app.controller.state
         self.assertFalse(s.bank_a or s.bank_b)
         self.assertEqual(s.mode, ControllerMode.OFF)
+
+
+class TestStopComLoopTravado(Base):
+    """M4: /stop com o loop travado precisa ser definitivo."""
+
+    def _stop_travado(self):
+        self.app._start_curve()
+        self.app._persist_firing(300.0, force=True)
+        self.assertIsNotNone(firing_state.load())
+        with mock.patch.object(self.main, "REMOTE_TIMEOUT_S", 0.2):
+            return self.run_remote(self.app._remote_stop_request, drain=False)
+
+    def test_reles_travados_e_estado_apagado(self):
+        result = self._stop_travado()
+        self.assertIn("não será retomada", result)
+        self.app.relays.hold_off.assert_called_once()
+        self.assertIsNone(firing_state.load())      # watchdog reinicia → não retoma
+        self.assertTrue(self.app._remote_stop.is_set())
+
+    def test_loop_volta_e_conclui_a_parada(self):
+        self._stop_travado()
+        self.app._commands.queue.clear()             # job que expirou
+        self.app._control_tick()
+        s = self.app.controller.state
+        self.assertEqual(s.mode, ControllerMode.OFF)
+        self.assertFalse(s.bank_a or s.bank_b)
+        self.assertFalse(self.app._remote_stop.is_set())
+        self.app.relays.release.assert_called_once()
+        self.assertFalse(self.app.flog.active)
+        self.assertEqual(self.app.ui, self.main.UIState.IDLE)
+        self.assertIn("voltou a responder", self.app.notifier.send.call_args.args[0])
+        self.assertIsNone(firing_state.load())
+
+    def test_estado_nao_e_regravado_antes_de_concluir(self):
+        self._stop_travado()
+        self.app._persist_firing(300.0, force=True)   # loop retomou no meio do ciclo
+        self.assertIsNone(firing_state.load())
+
+    def test_falha_ao_concluir_mantem_trava(self):
+        self._stop_travado()
+        self.app._remote_emergency_stop = mock.MagicMock(side_effect=RuntimeError("x"))
+        with self.assertRaises(RuntimeError):
+            self.app._check_remote_stop()
+        self.app.relays.release.assert_not_called()
+        self.assertTrue(self.app._remote_stop.is_set())
+
+    def test_reles_reais_ignoram_set_enquanto_travados(self):
+        import relays
+        r = relays.SimulatedRelays()
+        self.app.relays = r
+        self._stop_travado()
+        r.set(True, True)                             # ciclo de controle "voltando"
+        self.assertEqual((r._state_a, r._state_b), (False, False))
+        self.app._control_tick()                      # conclui e libera
+        self.assertFalse(r.held_off)
+        r.set(True, False)
+        self.assertTrue(r._state_a)
+
+
+class TestTravaHardwareRelays(unittest.TestCase):
+
+    def test_hold_off(self):
+        import relays
+
+        class Dev:
+            def __init__(self, pin, active_high=True, initial_value=False):
+                self.value = initial_value
+        with mock.patch.object(relays, "OutputDevice", Dev, create=True):
+            r = relays.HardwareRelays(13, 16)
+        r.set(True, True)
+        r.hold_off()
+        self.assertEqual((r._relay_a.value, r._relay_b.value), (False, False))
+        r.set(True, True)
+        self.assertEqual((r._relay_a.value, r._relay_b.value), (False, False))
+        r.release()
+        r.set(True, False)
+        self.assertEqual((r._relay_a.value, r._relay_b.value), (True, False))
 
 
 class TestStatusRemoto(Base):

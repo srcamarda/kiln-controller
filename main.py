@@ -138,6 +138,7 @@ class KilnApp:
         # nunca direto da thread do Telegram (ver _call_in_main)
         self._commands    = queue.Queue()
         self._main_thread = threading.get_ident()
+        self._remote_stop = threading.Event()   # /stop com o loop travado (M4)
 
         load_env_file()
         token, chat_ids, stop_password = telegram_config()
@@ -214,6 +215,7 @@ class KilnApp:
                 now = time.monotonic()
                 sdnotify.watchdog_ping()
                 self._process_commands()   # /stop, /status vindos do Telegram
+                self._check_remote_stop()  # /stop dado enquanto o loop estava travado
                 self.sensor.poll()   # leitura temporizada do termopar (0,5 s)
 
                 # ── Leitura do encoder ─────────────────────────
@@ -346,6 +348,7 @@ class KilnApp:
         return f"{prefix}Estado: {esc(self.ui.upper())}\nTemp: {temp:.1f}°C"
 
     def _control_tick(self):
+        self._check_remote_stop()
         temp  = self.sensor.temperature
         fault = self.sensor.fault
 
@@ -882,6 +885,9 @@ class KilnApp:
         Remove o arquivo quando o controlador deixa de estar ativo
         (concluída, cancelada, ERRO)."""
         ctrl = self.controller
+        ev = getattr(self, "_remote_stop", None)
+        if ev is not None and ev.is_set():
+            return          # /stop pendente: não regravar a queima que foi cancelada
         if not ctrl.is_active():
             if self._state_saved:
                 self._clear_firing()
@@ -1160,11 +1166,46 @@ class KilnApp:
         try:
             return self._call_in_main(self._remote_emergency_stop)
         except TimeoutError:
-            # Loop travado: corta os relés direto desta thread como último recurso
+            return self._stop_without_loop()
+
+    def _stop_without_loop(self) -> str:
+        """
+        /stop com o loop principal travado (thread do Telegram). Tudo aqui é
+        seguro fora do loop e torna a parada definitiva:
+          1. trava os relés desligados — se o loop voltar, o ciclo de controle
+             não consegue religá-los (set() é ignorado até a liberação);
+          2. apaga o estado da queima — se o watchdog reiniciar o programa, a
+             queima não é retomada;
+          3. sinaliza o loop, que conclui a parada (controlador, log,
+             healthchecks) e libera a trava assim que voltar a rodar.
+        """
+        ev = getattr(self, "_remote_stop", None)
+        if ev is None:
+            ev = self._remote_stop = threading.Event()
+        ev.set()
+        try:
+            self.relays.hold_off()
+        except Exception as e:
+            print(f"\r[main] /stop: falha ao travar os relés ({e!r}) — tentando off().")
             self.relays.off()
-            print("\r[main] /stop: loop principal não respondeu — relés desligados direto.")
-            return ("O controlador não respondeu; os relés foram desligados diretamente. "
-                    "Verifique o forno — o watchdog deve reiniciar o programa.")
+        firing_state.clear()
+        print("\r[main] /stop: loop principal não respondeu — relés travados desligados "
+              "e estado da queima apagado.")
+        return ("O controlador não respondeu; os relés foram desligados e travados "
+                "diretamente, e a queima foi cancelada — não será retomada mesmo que "
+                "o programa reinicie. Verifique o forno.")
+
+    def _check_remote_stop(self):
+        """No loop principal: conclui um /stop dado enquanto o loop estava travado."""
+        ev = getattr(self, "_remote_stop", None)
+        if ev is None or not ev.is_set():
+            return
+        print("\r[main] Loop principal voltou — concluindo o /stop pendente.")
+        self._remote_emergency_stop()        # se falhar, a trava dos relés continua
+        ev.clear()
+        self.relays.release()
+        self.notifier.send(f"✅ {b('O controlador voltou a responder.')} /stop concluído: "
+                           f"queima cancelada, relés desligados.", critical=True)
 
     def _remote_emergency_stop(self) -> str:
         """Executado no loop principal após /stop + senha. Retorna o texto da resposta."""
