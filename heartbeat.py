@@ -98,13 +98,23 @@ class Heartbeat:
     def _worker(self):
         while True:
             try:
-                kind, info = self._events.get(timeout=1.0)
-            except queue.Empty:
-                kind = None
-            if kind:
-                self._handle_event(kind, info)
-            else:
-                self._tick()
+                self._step()
+            except Exception as e:      # nunca deixa a thread morrer em silêncio
+                err = f"erro inesperado: {e!r}"
+                if err != self._last_err:
+                    print(f"\r[heartbeat] {err} — continuando.")
+                    self._last_err = err
+                time.sleep(5)
+
+    def _step(self):
+        try:
+            kind, info = self._events.get(timeout=1.0)
+        except queue.Empty:
+            kind = None
+        if kind:
+            self._handle_event(kind, info)
+        else:
+            self._tick()
 
     def _tick(self):
         """Ping periódico durante a queima."""

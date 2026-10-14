@@ -17,6 +17,7 @@ Estados da UI:
   CURVE_SAVE      → confirma salvar curva
   CURVE_EDIT_LIST → seleciona curva para editar
   CURVE_EDIT_SEG  → edita segmento existente
+  CURVE_DISCARD   → confirma descartar a curva em edição (toque longo)
   MESSAGE         → aviso (curva inválida, sem curvas...) — click volta
 """
 
@@ -105,6 +106,7 @@ class UIState:
     CURVE_SAVE     = "curve_save"
     CURVE_EDIT_LIST= "curve_edit_list"
     CURVE_EDIT_SEG = "curve_edit_seg"
+    CURVE_DISCARD  = "curve_discard"
     MESSAGE        = "message"
 
 
@@ -550,6 +552,9 @@ class KilnApp:
         elif ui == UIState.CURVE_EDIT_LIST:
             self.display.show_curve_list_edit(self.curves, self.edit_sel)
 
+        elif ui == UIState.CURVE_DISCARD:
+            self.display.show_discard_confirm(is_new=not self.editing_existing)
+
         elif ui == UIState.MESSAGE:
             self.display.show_message(self.msg_title, self.msg_text)
 
@@ -662,18 +667,9 @@ class KilnApp:
                     self.edit_rate = max(RATE_MIN,
                         min(RATE_MAX, self.edit_rate + delta * RATE_STEP))
                 else:
-                    # Target deve ser maior que o segmento anterior
-                    # Em edição, exclui o segmento atual do cálculo
-                    min_target = TARGET_MIN
-                    segs = self.edit_curve["segments"]
-                    if self.ui == UIState.CURVE_EDIT_SEG:
-                        prev = segs[:self.edit_seg_idx]
-                    else:
-                        prev = segs
-                    if prev:
-                        min_target = prev[-1]["target_temp"] + TARGET_STEP
+                    min_target, max_target = self._target_limits()
                     self.edit_target = max(min_target,
-                        min(TARGET_MAX, self.edit_target + delta * TARGET_STEP))
+                        min(max_target, self.edit_target + delta * TARGET_STEP))
             elif click:
                 if self.edit_field == 0:
                     # Avança para campo target
@@ -682,7 +678,7 @@ class KilnApp:
                     # Confirma segmento
                     self._confirm_segment()
             elif long_:
-                self._cancel_edit()
+                self._ask_discard()
 
         # ── NOVA CURVA: ADICIONAR MAIS ────────────
         elif ui == UIState.CURVE_ADD_MORE:
@@ -701,7 +697,7 @@ class KilnApp:
                 self.save_scroll = 0
                 self.ui = UIState.CURVE_SAVE
             elif long_:
-                self._cancel_edit()
+                self._ask_discard()
 
         # ── NOVA CURVA: SALVAR ────────────────────
         elif ui == UIState.CURVE_SAVE:
@@ -714,7 +710,14 @@ class KilnApp:
             elif click:
                 self._save_curve()
             elif long_:
+                self._ask_discard()
+
+        # ── DESCARTAR EDIÇÃO? ─────────────────────
+        elif ui == UIState.CURVE_DISCARD:
+            if click:
                 self._cancel_edit()
+            elif long_:
+                self.ui = self.discard_return     # volta para onde estava
 
         # ── EDITAR: LISTA ─────────────────────────
         elif ui == UIState.CURVE_EDIT_LIST:
@@ -1046,6 +1049,27 @@ class KilnApp:
             self.edit_target = 500
         self.ui = UIState.CURVE_NEW_SEG
 
+    def _target_limits(self):
+        """
+        Faixa permitida para a temperatura alvo do segmento em edição: acima
+        do segmento anterior e, ao editar uma curva existente, com espaço
+        para os segmentos seguintes continuarem crescentes até TARGET_MAX.
+        """
+        segs = self.edit_curve["segments"]
+        if self.ui == UIState.CURVE_EDIT_SEG:
+            prev  = segs[:self.edit_seg_idx]
+            after = len(segs) - self.edit_seg_idx - 1
+        else:
+            prev, after = segs, 0
+        min_target = prev[-1]["target_temp"] + TARGET_STEP if prev else TARGET_MIN
+        max_target = TARGET_MAX - after * TARGET_STEP
+        return min_target, max(min_target, max_target)
+
+    def _ask_discard(self):
+        """Toque longo durante a edição: pede confirmação antes de descartar."""
+        self.discard_return = self.ui
+        self.ui = UIState.CURVE_DISCARD
+
     def _confirm_segment(self):
         seg = {
             "rate_per_hour": self.edit_rate,
@@ -1060,8 +1084,11 @@ class KilnApp:
                 self.edit_seg_idx = next_idx
                 next_seg = self.edit_curve["segments"][next_idx]
                 self.edit_rate   = next_seg["rate_per_hour"]
-                self.edit_target = next_seg["target_temp"]
                 self.edit_field  = 0
+                # Se o alvo deste segmento passou o do seguinte, o seguinte já
+                # aparece ajustado para ficar acima (a curva segue crescente)
+                lo, hi = self._target_limits()
+                self.edit_target = max(lo, min(hi, next_seg["target_temp"]))
                 # Permanece em CURVE_EDIT_SEG
             else:
                 self.ui = UIState.CURVE_SOAK

@@ -27,6 +27,12 @@ done
 
 chmod +x "$DIR/deploy/relays-off.sh"
 
+# Desligar os relés na saída depende de pinctrl ou raspi-gpio
+if ! command -v pinctrl >/dev/null 2>&1 && ! command -v raspi-gpio >/dev/null 2>&1; then
+    echo "AVISO: pinctrl/raspi-gpio não encontrados — instale com 'sudo apt install raspi-utils'" >&2
+    echo "       (sem eles os relés não ficam garantidamente desligados quando o serviço para)." >&2
+fi
+
 # Unidade do serviço
 sed -e "s|@USER@|$USER_NAME|g" -e "s|@DIR@|$DIR|g" -e "s|@PYTHON@|$PYTHON|g" \
     "$DIR/deploy/kiln-controller.service" > /etc/systemd/system/kiln-controller.service

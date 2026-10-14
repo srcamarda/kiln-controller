@@ -422,6 +422,23 @@ def _render_cancel_confirm(draw):
     draw.text((W - bbox[2] - 12, 210), "Longo → NÃO", font=_font(16), fill=C_GREEN)
 
 
+def _render_discard_confirm(draw, is_new):
+    """Confirmação antes de descartar a curva em edição (toque longo)."""
+    _text_center(draw, 10,  "DESCARTAR?", _font(28, bold=True), C_ORANGE)
+    _divider(draw, 50)
+    if is_new:
+        _text_center(draw, 95,  "Descartar a", _font(22), C_TEXT)
+        _text_center(draw, 128, "nova curva?", _font(22), C_TEXT)
+    else:
+        _text_center(draw, 95,  "Descartar as", _font(22), C_TEXT)
+        _text_center(draw, 128, "alterações?", _font(22), C_TEXT)
+    _divider(draw, 200)
+
+    draw.text((12, 210), "Click → SIM", font=_font(16, bold=True), fill=C_RED)
+    bbox = draw.textbbox((0, 0), "Longo → VOLTAR", font=_font(16))
+    draw.text((W - bbox[2] - 12, 210), "Longo → VOLTAR", font=_font(16), fill=C_GREEN)
+
+
 def _render_curve_segment(draw, seg_index, seg_total, field, rate, target, is_new):
     """Edição de um segmento. field: 0 = rate ativo, 1 = target ativo"""
     titulo = f"{'NOVO' if is_new else 'EDITAR'} SEGMENTO {seg_index + 1}/{seg_total}"
@@ -731,6 +748,11 @@ class Display:
     def show_curve_save(self, curve_name: str, segments: list, soak_min: int, scroll_idx: int = 0):
         img, draw = self._new_frame()
         _render_curve_save(draw, curve_name, segments, soak_min, scroll_idx)
+        self._write(img)
+
+    def show_discard_confirm(self, is_new: bool = True):
+        img, draw = self._new_frame()
+        _render_discard_confirm(draw, is_new)
         self._write(img)
 
     def show_curve_list_edit(self, curves: list, selected: int):

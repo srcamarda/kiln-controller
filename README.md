@@ -85,7 +85,7 @@ Camadas de proteção:
 
 - **Watchdog do serviço** (`WatchdogSec=30`): se o loop principal travar, o systemd mata e reinicia o processo.
 - **Watchdog de hardware** (`RuntimeWatchdogSec=14`): se o Pi/kernel travar, o Pi reinicia sozinho.
-- **Relés desligados ao sair**: o próprio programa, ao encerrar (Ctrl+C, `systemctl stop`, erro), força GPIO13/16 em HIGH com `pinctrl` depois que o gpiozero libera os pinos — rodando à mão também. Sob o systemd, `deploy/relays-off.sh` faz o mesmo no ExecStopPost, cobrindo também o processo morto pelo watchdog.
+- **Relés desligados ao sair**: o próprio programa, ao encerrar (Ctrl+C, `systemctl stop`, erro), força GPIO13/16 em HIGH com `pinctrl` depois que o gpiozero libera os pinos — rodando à mão também. Sob o systemd, `deploy/relays-off.sh` faz o mesmo no ExecStopPost, cobrindo também o processo morto pelo watchdog. Ambos dependem de `pinctrl` (pacote `raspi-utils`) ou `raspi-gpio`; sem eles o script falha com erro no log, e o `install.sh` avisa na instalação.
 - **Relés desligados no boot**: `gpio=13,16=op,dh` no `config.txt` faz o firmware do Pi colocar os pinos em HIGH (relés desligados no HL-52S) antes do Linux subir.
 - **Tela e relógio são acessórios**: sem `/dev/fb1`, sem fontes ou com erro de escrita, o controle segue sem tela (nova tentativa de abrir a cada 30 s). Se a leitura do DS3231 falhar, usa a última hora boa avançada pelo relógio interno (ou a hora do sistema). Erros aparecem uma vez no log, não derrubam a queima. Para não pesar no loop do Pi 2B, a conversão para o formato da tela (RGB565) é feita dentro do Pillow, em C, e um quadro igual ao anterior não é reescrito (exceto a cada 30 s).
 
@@ -114,6 +114,7 @@ As curvas ficam em `curves.json` (ou no caminho de `KILN_CURVES_FILE`). Limites:
 - Gravação atômica: uma queda de energia durante o salvamento não corrompe o arquivo; a versão anterior fica em `curves.json.bak`.
 - Na inicialização, curvas inválidas (ex.: editadas à mão com erro) são ignoradas com aviso no console e no Telegram, em vez de impedir o programa de subir. Se o arquivo estiver corrompido, usa o `.bak`.
 - Erros ao salvar pelo encoder aparecem na tela.
+- Edição pelo encoder: ao editar um segmento, o alvo fica limitado de forma que os seguintes ainda caibam até 1270 °C; se ele passar do alvo do segmento seguinte, o seguinte já aparece ajustado para ficar acima. O toque longo durante a edição pede confirmação ("Descartar?" — click descarta, toque longo volta para onde estava).
 - Forno já quente ao iniciar (ex.: logo após um pré-aquecimento): os segmentos cujo alvo já foi atingido são pulados (aviso no registro da queima e no Telegram). Se o forno estiver acima do alvo final, a curva não inicia ("FORNO QUENTE"). No pré-aquecimento com o forno acima do alvo, a margem de sobretemperatura vale sobre a temperatura de partida até ele esfriar até o alvo.
 
 ## Registro das queimas

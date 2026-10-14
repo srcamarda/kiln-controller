@@ -101,6 +101,10 @@ class TelegramNotifier:
 
             print(f"\r[notifier] Telegram ativado. Recebimento: "
                   f"{'ON' if (status_callback or self.stop_callback) else 'OFF'}")
+            if not self._admin_ids and any(c.startswith("-") for c in self.chat_ids):
+                print("\r[notifier] AVISO: mensagens vão para um grupo e "
+                      "KILN_TELEGRAM_ADMIN_IDS está vazio — ninguém pode dar comandos "
+                      "(/status, /stop). Coloque o seu id de usuário nessa variável.")
         else:
             print("\r[notifier] Telegram desativado.")
 

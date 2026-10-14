@@ -117,5 +117,10 @@ with Display() as disp:
         disp.show_curve_save("Curva 3", segs_exemplo + [{"rate_per_hour": 60, "target_temp": 1220}], soak_min=30)
         time.sleep(DELAY)
 
+    if screen in (None, "curve_discard"):
+        print("DESCARTAR EDIÇÃO")
+        disp.show_discard_confirm(is_new=False)
+        time.sleep(DELAY)
+
 
 print("Teste concluído.")
