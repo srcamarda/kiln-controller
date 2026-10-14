@@ -15,7 +15,7 @@ Telas implementadas:
 import struct
 import time
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 from controller import ControllerMode
 
 # ──────────────────────────────────────────────
@@ -42,6 +42,30 @@ C_BAR_BG   = (40,   40,  40)  # fundo da barra de progresso
 C_BAR_FG   = (255, 140,   0)  # preenchimento da barra
 C_SOAK     = (180,  80, 220)  # cor do soak
 C_BORDER   = (60,   60,  60)  # bordas sutis
+
+
+# ──────────────────────────────────────────────
+# Conversão RGB888 → RGB565 (little-endian), toda em C dentro do Pillow
+# ──────────────────────────────────────────────
+# O Pillow não tem "packer" para RGB565. Em vez de converter pixel a pixel em
+# Python (~20 ms num PC, várias vezes mais no Pi 2B, 2× por segundo), monta os
+# dois bytes de cada pixel com tabelas de consulta por canal:
+#   byte baixo = (G & 0x1C) << 3 | B >> 3
+#   byte alto  = (R & 0xF8)      | G >> 5
+# As partes de cada byte ocupam bits disjuntos, então somar = OU (sem saturar).
+# Intercalar como "LA" dá [baixo, alto] por pixel — o formato do framebuffer.
+
+_LUT_R_HI = [v & 0xF8 for v in range(256)]
+_LUT_G_HI = [v >> 5 for v in range(256)]
+_LUT_G_LO = [(v & 0x1C) << 3 for v in range(256)]
+_LUT_B_LO = [v >> 3 for v in range(256)]
+
+
+def rgb565_bytes(img: Image.Image) -> bytes:
+    r, g, b = img.convert("RGB").split()
+    lo = ImageChops.add(g.point(_LUT_G_LO), b.point(_LUT_B_LO))
+    hi = ImageChops.add(r.point(_LUT_R_HI), g.point(_LUT_G_HI))
+    return Image.merge("LA", (lo, hi)).tobytes()
 
 
 # ──────────────────────────────────────────────
@@ -559,7 +583,8 @@ class Display:
     def __init__(self, fb_dev=FB_DEV):
         self._fb_dev  = fb_dev
         self._fb      = None
-        self._last_rendered = None  # evita reescrever frame idêntico
+        self._last_rendered = None  # bytes RGB do último quadro escrito
+        self._last_write    = 0.0   # monotonic da última escrita real
 
         # Pré-carrega fontes comuns para evitar lag no primeiro frame
         for size in [13, 14, 16, 17, 18, 20, 22, 24, 28, 36, 40, 44, 46, 52]:
@@ -567,11 +592,13 @@ class Display:
             _font(size, bold=True)
 
     REOPEN_S = 30   # intervalo entre tentativas de reabrir o framebuffer
+    REFRESH_S = 30  # reescreve um quadro idêntico após isso (se algo sujou a tela)
 
     def open(self):
         """Abre o framebuffer. Falha (ex.: sem /dev/fb1) não derruba o
         controlador: a tela fica desligada e é reaberta periodicamente."""
         self._next_open = time.monotonic() + self.REOPEN_S
+        self._last_rendered = None      # tela nova: conteúdo desconhecido
         try:
             self._fb = open(self._fb_dev, "wb")
             if getattr(self, "_fb_failing", False):
@@ -593,27 +620,30 @@ class Display:
             self._fb = None
 
     def _write(self, img: Image.Image):
-        """Converte RGB → RGB565 e escreve no framebuffer."""
+        """Converte RGB → RGB565 e escreve no framebuffer. Quadro idêntico ao
+        anterior não é reescrito (a maioria das telas muda 1× por segundo ou
+        menos), salvo a cada REFRESH_S."""
         if self._fb is None:
             if time.monotonic() < getattr(self, "_next_open", 0):
                 return
             self.open()
             if self._fb is None:
                 return
-        buf = bytearray(W * H * 2)
-        idx = 0
-        for r, g, b in img.getdata():
-            pixel = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            buf[idx]     = pixel & 0xFF   # little-endian
-            buf[idx + 1] = pixel >> 8
-            idx += 2
+        raw = img.tobytes()
+        now = time.monotonic()
+        if raw == self._last_rendered and now - self._last_write < self.REFRESH_S:
+            return
+        buf = rgb565_bytes(img)
         try:
             self._fb.seek(0)
             self._fb.write(buf)
             self._fb.flush()
+            self._last_rendered = raw
+            self._last_write    = now
         except OSError as e:
             print(f"\r[display] Falha ao escrever na tela ({e}) — tentando reabrir.")
             self.close()
+            self._last_rendered = None
             self._fb_failing = True
             self._next_open = time.monotonic() + self.REOPEN_S
 
