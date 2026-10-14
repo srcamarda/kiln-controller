@@ -36,7 +36,7 @@ chmod 600 .env
 
 Variáveis já definidas no ambiente (ex.: `Environment=`/`EnvironmentFile=` no systemd) têm precedência sobre o `.env`. Sem token/chat o Telegram fica desativado; sem `KILN_STOP_PASSWORD` o `/stop` remoto fica desativado.
 
-Comandos (executados pelo loop principal do controlador, não pela thread do Telegram; a resposta confirma o que aconteceu — ex.: "nenhuma queima em andamento"): `/status` e `/stop` (pede a senha; a mensagem com a senha é apagada do chat se o bot tiver permissão; 3 senhas erradas bloqueiam o `/stop` por 15 min). Só aceita comandos de usuários em `KILN_TELEGRAM_ADMIN_IDS` (vazio = os chat ids, para uso em chat privado); a senha do `/stop` só vale vinda de quem pediu.
+Comandos (executados pelo loop principal do controlador, não pela thread do Telegram; a resposta confirma o que aconteceu — ex.: "nenhuma queima em andamento"): `/status` e `/stop` (pede a senha; a mensagem com a senha é apagada do chat se o bot tiver permissão; 3 senhas erradas bloqueiam o `/stop` por 15 min). Só aceita comandos de usuários em `KILN_TELEGRAM_ADMIN_IDS` (vazio = os chat ids, para uso em chat privado); a senha do `/stop` só vale vinda de quem pediu. Comandos enviados com o controlador desligado ou reiniciando são descartados ao iniciar, e qualquer mensagem que chegue com mais de 60 s de atraso (rede caiu e voltou) é ignorada com aviso no chat — envie de novo se ainda quiser. O atraso e o prazo da senha são medidos pela hora do Telegram, não pelo relógio do Pi.
 
 Entrega: sem internet ou com o Telegram fora, as mensagens são reenviadas com espera crescente — alertas críticos (erros, queima retomada/não retomada, conclusão) por até 6 h, as demais por até 10 min. Falhas aparecem em `journalctl -u kiln-controller`.
 

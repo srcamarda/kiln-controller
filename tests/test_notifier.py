@@ -245,8 +245,103 @@ class TestComandoStop(unittest.TestCase):
         self.assertEqual(len(logs), 1)
         self.assertIn("KILN_TELEGRAM_CHAT_IDS", logs[0])
 
+    # ── M3: mensagens antigas ───────────────────────────────────────────
+
+    def test_comando_atrasado_ignorado(self):
+        T = 1_800_000_000
+        self.t._handle_update({"text": "/stop", "message_id": 1, "date": T,
+                               "chat": {"id": 111}, "from": {"id": 111}},
+                              server_now=T + 2 * 3600)
+        self.assertIn("atraso", self.sent[-1])
+        self.t._handle_update({"text": "segredo", "message_id": 2, "date": T + 10,
+                               "chat": {"id": 111}, "from": {"id": 111}},
+                              server_now=T + 2 * 3600)
+        self.assertEqual(self.stopped, 0)
+
+    def test_comando_recente_aceito(self):
+        T = 1_800_000_000
+        self.t._handle_update({"text": "/stop", "message_id": 1, "date": T,
+                               "chat": {"id": 111}, "from": {"id": 111}}, server_now=T + 2)
+        self.t._handle_update({"text": "segredo", "message_id": 2, "date": T + 20,
+                               "chat": {"id": 111}, "from": {"id": 111}}, server_now=T + 21)
+        self.assertEqual(self.stopped, 1)
+
+    def test_senha_atrasada_cancela(self):
+        T = 1_800_000_000
+        self.t._handle_update({"text": "/stop", "message_id": 1, "date": T,
+                               "chat": {"id": 111}, "from": {"id": 111}}, server_now=T + 1)
+        self.t._handle_update({"text": "segredo", "message_id": 5, "date": T + 30,
+                               "chat": {"id": 111}, "from": {"id": 111}},
+                              server_now=T + 30 + n.MAX_CMD_AGE_S + 5)
+        self.assertEqual(self.stopped, 0)
+        self.assertEqual(self.deleted, [5])
+        self.assertIn("atraso", self.sent[-1])
+
+    def test_prazo_da_senha_pela_hora_do_telegram(self):
+        """O prazo usa as datas das mensagens, não o relógio local."""
+        T = 1_800_000_000
+        self.t._handle_update({"text": "/stop", "message_id": 1, "date": T,
+                               "chat": {"id": 111}, "from": {"id": 111}}, server_now=T)
+        self.clock.t += 5                                  # relógio local quase parado
+        self.t._handle_update({"text": "segredo", "message_id": 2,
+                               "date": T + n.STOP_CONFIRM_S + 10,
+                               "chat": {"id": 111}, "from": {"id": 111}},
+                              server_now=T + n.STOP_CONFIRM_S + 10)
+        self.assertEqual(self.stopped, 0)
+        self.assertIn("Tempo esgotado", self.sent[-1])
+
+    def test_sem_hora_do_servidor_nao_bloqueia(self):
+        self.t._handle_update({"text": "/status", "message_id": 1, "date": 1,
+                               "chat": {"id": 111}, "from": {"id": 111}}, server_now=None)
+        self.assertNotIn("atraso", " ".join(self.sent))
+
+
+class TestRecebimento(unittest.TestCase):
+    """M3: descarte do que chegou antes do início e leitura do Date."""
+
+    def setUp(self):
+        self.t = make(status_callback=lambda: "ok")
+        self.calls = []
+        self.handled = []
+        self.t._handle_update = lambda msg, server_now=None: self.handled.append(
+            (msg.get("text"), server_now))
+
+    def _fake(self, responses):
+        def post(method, params, **kw):
+            self.calls.append(params)
+            if "meta" in kw and kw["meta"] is not None:
+                kw["meta"]["server_time"] = 1_800_000_100.0
+            return responses.pop(0)
+        self.t._post = post
+
+    def test_descarta_pendentes_no_inicio(self):
+        self._fake([{"result": [{"update_id": 41, "message": {"text": "/stop"}}]},
+                    {"result": []}])
+        with mock.patch("builtins.print"):
+            offset = self.t._skip_backlog()
+        self.assertEqual(offset, 42)
+        self.assertEqual(self.calls[0]["offset"], -1)
+        self.assertEqual(self.calls[1]["offset"], 42)     # confirma e apaga a fila
+        self.assertEqual(self.handled, [])                # nada foi executado
+
+    def test_sem_pendentes(self):
+        self._fake([{"result": []}])
+        self.assertEqual(self.t._skip_backlog(), 0)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_poll_passa_hora_do_servidor(self):
+        self._fake([{"result": [{"update_id": 7, "message": {"text": "/status"}}]}])
+        self.assertEqual(self.t._poll_once(5), 8)
+        self.assertEqual(self.handled, [("/status", 1_800_000_100.0)])
+
+    def test_http_date(self):
+        self.assertEqual(n._http_date("Wed, 14 Oct 2026 12:00:00 GMT"),
+                         1_791_979_200.0)
+        self.assertIsNone(n._http_date(None))
+        self.assertIsNone(n._http_date("lixo"))
+
     def test_sem_senha_stop_desativado(self):
-        t = TelegramNotifier("", [], stop_callback=self._stop)
+        t = TelegramNotifier("", [], stop_callback=lambda: None)
         self.assertIsNone(t.stop_callback)
 
 

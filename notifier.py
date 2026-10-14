@@ -11,6 +11,12 @@ Entrega: falhas de rede, erro 5xx e limite de taxa (429) são repetidas com
 espera crescente. Mensagens críticas (`critical=True`: erros, queima não
 retomada, parada remota…) são tentadas por até CRITICAL_MAX_AGE_S; as
 demais por até NORMAL_MAX_AGE_S. Toda falha e todo descarte vão para o log.
+
+Recebimento: comandos enviados antes de o controlador começar a escutar
+(Pi desligado, serviço reiniciando) são descartados no início, e qualquer
+mensagem com mais de MAX_CMD_AGE_S (rede caiu e voltou) é ignorada. A idade
+é medida pela hora do servidor do Telegram (campo `date` da mensagem contra
+o cabeçalho Date da resposta), sem depender do relógio do Pi.
 """
 import hmac
 import html
@@ -22,6 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.utils import parsedate_to_datetime
 
 NORMAL_MAX_AGE_S   = 10 * 60      # status, início, avisos de hora em hora
 CRITICAL_MAX_AGE_S = 6 * 3600     # erros e eventos de segurança
@@ -31,6 +38,7 @@ SEND_TIMEOUT_S     = 10
 STOP_CONFIRM_S     = 60           # prazo para digitar a senha após /stop
 STOP_MAX_FAILS     = 3            # senhas erradas seguidas antes do bloqueio
 STOP_LOCKOUT_S     = 15 * 60      # duração do bloqueio do /stop
+MAX_CMD_AGE_S      = 60           # mensagem mais velha que isso é ignorada
 
 
 def esc(text) -> str:
@@ -76,7 +84,7 @@ class TelegramNotifier:
         if not self.stop_password:
             self.stop_callback = None
 
-        self._pending_stops = {}   # {(chat_id, user_id): instante do /stop}
+        self._pending_stops = {}   # {(chat_id, user_id): (date do /stop no Telegram, monotonic)}
         self._stop_fails    = {}   # {(chat_id, user_id): senhas erradas seguidas}
         self._stop_locked   = {}   # {(chat_id, user_id): bloqueado até}
 
@@ -160,13 +168,17 @@ class TelegramNotifier:
                 attempt += 1
                 time.sleep(delay)
 
-    def _post(self, method, params, timeout=SEND_TIMEOUT_S, quiet=False):
-        """Chama a API. Classifica erros em _BadFormat, _Fatal ou _Retry."""
+    def _post(self, method, params, timeout=SEND_TIMEOUT_S, quiet=False, meta=None):
+        """Chama a API. Classifica erros em _BadFormat, _Fatal ou _Retry.
+        Se `meta` for um dict, recebe meta["server_time"] (epoch do cabeçalho
+        Date da resposta, ou None)."""
         url = f"https://api.telegram.org/bot{self.token}/{method}"
         data = urllib.parse.urlencode(params).encode("utf-8")
         try:
             with urllib.request.urlopen(urllib.request.Request(url, data=data),
                                         timeout=timeout) as resp:
+                if meta is not None:
+                    meta["server_time"] = _http_date(resp.headers.get("Date"))
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             try:
@@ -199,20 +211,15 @@ class TelegramNotifier:
     # ── Recebimento ───────────────────────────
 
     def _receiver_worker(self):
-        offset = 0
+        offset = None          # None = ainda não descartou o que chegou antes
         while True:
             try:
-                data = self._post("getUpdates", {"offset": offset, "timeout": 30},
-                                  timeout=35, quiet=True)
+                if offset is None:
+                    offset = self._skip_backlog()
+                offset = self._poll_once(offset)
                 if self._last_rx_error:
                     print("\r[notifier] Recebimento de comandos normalizado.")
                     self._last_rx_error = None
-                for result in data.get("result", []):
-                    offset = result["update_id"] + 1
-                    try:
-                        self._handle_update(result.get("message") or {})
-                    except Exception as e:
-                        print(f"\r[notifier] Erro ao tratar comando: {e!r}")
             except (_Retry, _Fatal, _BadFormat, Exception) as e:
                 err = f"{type(e).__name__}: {e}"
                 if err != self._last_rx_error:
@@ -220,7 +227,36 @@ class TelegramNotifier:
                     self._last_rx_error = err
                 time.sleep(5)
 
-    def _handle_update(self, msg: dict):
+    def _skip_backlog(self) -> int:
+        """
+        Descarta as mensagens que o Telegram guardou enquanto o controlador
+        não escutava (até 24 h): um /stop antigo não pode parar uma queima
+        retomada. offset=-1 devolve só a última; o offset seguinte a ela
+        confirma (e apaga) todas as anteriores.
+        """
+        data = self._post("getUpdates", {"offset": -1, "timeout": 0}, quiet=True)
+        results = data.get("result", [])
+        if not results:
+            return 0
+        last = results[-1]["update_id"]
+        self._post("getUpdates", {"offset": last + 1, "timeout": 0}, quiet=True)
+        print("\r[notifier] Mensagens recebidas antes do início foram descartadas.")
+        return last + 1
+
+    def _poll_once(self, offset: int) -> int:
+        meta = {}
+        data = self._post("getUpdates", {"offset": offset, "timeout": 30},
+                          timeout=35, quiet=True, meta=meta)
+        for result in data.get("result", []):
+            offset = result["update_id"] + 1
+            try:
+                self._handle_update(result.get("message") or {},
+                                    server_now=meta.get("server_time"))
+            except Exception as e:
+                print(f"\r[notifier] Erro ao tratar comando: {e!r}")
+        return offset
+
+    def _handle_update(self, msg: dict, server_now: float = None):
         text    = (msg.get("text") or "").strip()
         chat    = msg.get("chat") or {}
         sender  = msg.get("from") or {}
@@ -243,13 +279,35 @@ class TelegramNotifier:
         # A senha do /stop é esperada de quem pediu, no mesmo chat
         key = (chat_id, from_id)
 
-        now = time.time()
+        now      = time.monotonic()      # bloqueio: independe do relógio do Pi
+        msg_date = msg.get("date")       # hora do servidor do Telegram (epoch)
+
+        # 0. Mensagem atrasada (rede caiu e voltou): nunca é executada
+        age = (server_now - msg_date) if (server_now and msg_date) else None
+        if age is not None and age > MAX_CMD_AGE_S:
+            mins = max(1, int(age // 60))
+            print(f"\r[notifier] Mensagem de {from_id} ignorada: enviada há {mins} min.")
+            if key in self._pending_stops:
+                self._pending_stops.pop(key, None)
+                self._delete_message(chat_id, msg.get("message_id"))
+                self.send(f"⌛ {b('Senha recebida com atraso')} (enviada há {mins} min, "
+                          f"sem conexão). /stop cancelado — envie de novo se ainda "
+                          f"quiser.", specific_chat_id=chat_id)
+            elif text.startswith("/"):
+                cmd = esc(text.split()[0])
+                self.send(f"⌛ Comando {cmd} ignorado: chegou com {mins} min de atraso "
+                          f"(controlador sem conexão). Envie de novo se ainda quiser.",
+                          specific_chat_id=chat_id)
+            return
 
         # 1. Aguardando a senha deste usuário? (um novo comando cancela a espera)
         if key in self._pending_stops and text.startswith("/"):
             self._pending_stops.pop(key, None)
         if key in self._pending_stops:
-            elapsed = now - self._pending_stops.pop(key)
+            asked_date, asked_mono = self._pending_stops.pop(key)
+            # Prazo pela hora do Telegram entre o /stop e a senha (se houver)
+            elapsed = (msg_date - asked_date) if (msg_date and asked_date) \
+                else (now - asked_mono)
             self._delete_message(chat_id, msg.get("message_id"))   # tira a senha do histórico
             if elapsed > STOP_CONFIRM_S:
                 self.send(f"⌛ {b('Tempo esgotado.')} Operação cancelada. "
@@ -294,7 +352,7 @@ class TelegramNotifier:
                 self.send(f"⛔ /stop bloqueado por mais {int((locked_until - now) // 60) + 1} min "
                           f"(senhas incorretas). Use o encoder no forno.", specific_chat_id=chat_id)
                 return
-            self._pending_stops[key] = now
+            self._pending_stops[key] = (msg_date, now)
             self.send(f"⚠️ {b('ATENÇÃO!')} Você solicitou o {b('DESLIGAMENTO DE EMERGÊNCIA')}.\n\n"
                       f"Para confirmar, digite a sua senha de segurança nos próximos "
                       f"{STOP_CONFIRM_S} segundos:", specific_chat_id=chat_id)
@@ -316,6 +374,16 @@ class TelegramNotifier:
             self._post("deleteMessage", {"chat_id": chat_id, "message_id": message_id}, quiet=True)
         except Exception:
             pass   # sem permissão / mensagem antiga: não é crítico
+
+
+def _http_date(value):
+    """Cabeçalho HTTP Date → epoch (None se ausente/ilegível)."""
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value).timestamp()
+    except (TypeError, ValueError):
+        return None
 
 
 class _BadFormat(Exception):
