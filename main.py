@@ -930,11 +930,48 @@ class KilnApp:
         Chamado no boot, com o termopar já validado. Se havia queima em
         andamento, retoma — salvo sinais de problema, quando trava em ERRO
         com o motivo e avisa no Telegram.
+
+        Um estado salvo malformado (editado à mão, versão antiga do programa)
+        não pode derrubar o boot em ciclo (achado N2): a retomada inteira roda
+        protegida; em qualquer erro o estado é apagado, o controlador vai para
+        ERRO "Queima interrompida" e o Telegram é avisado.
         """
         snap = firing_state.load()
         if not snap:
             return
+        try:
+            self._resume_from(snap)
+        except Exception as e:
+            self._resume_failed(snap, e)
 
+    def _resume_failed(self, snap, error):
+        import traceback
+        traceback.print_exc()
+        name = "?"
+        try:
+            name = (snap.get("curve") or {}).get("name") or "pré-aquecimento"
+        except Exception:
+            pass
+        msg = (f"Queima '{name}' NÃO retomada: o estado salvo está inválido "
+               f"({type(error).__name__}: {error}).")
+        print(f"\r[main] {msg}")
+        for step in (self.relays.off, self._clear_firing,
+                     self.flog.close):
+            try:
+                step()
+            except Exception as e2:
+                print(f"\r[main] Falha ao limpar a retomada: {e2!r}")
+        self.controller.stop()
+        self.controller.fail(ErrorKind.INTERRUPTED, "Queima interrompida", msg)
+        self.ui = UIState.ERROR
+        try:
+            self.hb.fail(msg)
+        except Exception:
+            pass
+        self.notifier.send(f"🚨 {b('Queima não retomada após reinício.')}\n{esc(msg)}\n"
+                           f"Relés desligados. Verifique o forno.", critical=True)
+
+    def _resume_from(self, snap):
         temp      = self.sensor.temperature
         now_wall  = self._wall_time()
         saved_at  = snap.get("saved_at")

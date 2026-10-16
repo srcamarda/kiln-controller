@@ -137,6 +137,54 @@ class TestFiltroDeSalto(Base):
         self.assertAlmostEqual(self.s.temperature, t, delta=1.0)
 
 
+class TestRuidoN1(Base):
+    """N1: leituras rejeitadas não podem congelar a temperatura sem falha."""
+
+    def test_ruido_alternado_em_rampa_acompanha(self):
+        """Cenário reproduzido em 16/10: 500 → 620 °C em 20 min com ±20 °C
+        alternados. Antes: leitura parada em 500,0 °C e fault=False."""
+        self.step(500.0, n=10)
+        n = int(20 * 60 / sensor.SAMPLE_INTERVAL_S)
+        worst = 0.0
+        for i in range(n):
+            real = 500.0 + 120.0 * (i + 1) / n
+            self.step(real + (20.0 if i % 2 else -20.0))
+            self.assertFalse(self.s.fault, f"fault em {i * 0.5:.0f} s")
+            if i > 60:
+                worst = max(worst, abs(self.s.temperature - real))
+        self.assertAlmostEqual(self.s.temperature, 620.0, delta=5.0)
+        self.assertLess(worst, 10.0)
+
+    def test_leitura_erratica_vira_fault(self):
+        import random
+        rnd = random.Random(1)
+        self.step(500.0, n=10)
+        t0 = self.clock.t
+        while not self.s.fault:
+            self.step(500.0 + rnd.choice((-1, 1)) * rnd.uniform(80, 400))
+            self.assertLess(self.clock.t - t0, sensor.FAULT_TOLERANCE_S + 1.5)
+        self.assertIn("instável", self.s.fault_reason)
+        self.assertEqual(self.s.temperature, 500.0)     # nada de lixo no histórico
+
+    def test_rejeicoes_inconsistentes_curtas_nao_viram_fault(self):
+        self.step(500.0, n=10)
+        for v in (900.0, 100.0, 500.0, 500.0):
+            self.step(v)
+        self.assertFalse(self.s.fault)
+        self.assertAlmostEqual(self.s.temperature, 500.0, delta=0.1)
+
+    def test_recupera_depois_da_instabilidade(self):
+        import random
+        rnd = random.Random(2)
+        self.step(500.0, n=10)
+        for _ in range(40):
+            self.step(500.0 + rnd.choice((-1, 1)) * rnd.uniform(80, 400))
+        self.assertTrue(self.s.fault)
+        self.step(505.0, n=sensor.JUMP_RESET_COUNT + 1)
+        self.assertFalse(self.s.fault)
+        self.assertAlmostEqual(self.s.temperature, 505.0, delta=1.0)
+
+
 class TestSemHistorico(unittest.TestCase):
 
     def test_sem_leitura_valida_e_fault(self):

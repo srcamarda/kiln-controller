@@ -326,6 +326,57 @@ class TestMainResume(unittest.TestCase):
         self.assertEqual(app.ui, self.main.UIState.RUNNING)
 
 
+class TestEstadoMalformado(TestMainResume):
+    """N2: estado de queima inválido não pode derrubar o boot."""
+
+    def _boot_with(self, **changes):
+        self._save_running(700)
+        snap = firing_state.load()
+        for k, v in changes.items():
+            if v is _DEL:
+                snap.pop(k, None)
+            else:
+                snap[k] = v
+        firing_state.save(snap)
+        self.wall += 60
+        app = self._app(690)
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()), \
+             contextlib.redirect_stderr(io.StringIO()):
+            app._try_resume()                      # não pode levantar
+        return app
+
+    def _assert_interrompida(self, app):
+        self.assertEqual(app.ui, self.main.UIState.ERROR)
+        self.assertEqual(app.controller.state.error_kind, ErrorKind.INTERRUPTED)
+        self.assertFalse(app.controller.state.bank_a or app.controller.state.bank_b)
+        self.assertIsNone(firing_state.load())     # próximo boot não tenta de novo
+        app.relays.off.assert_called()
+        txt = app.notifier.send.call_args.args[0]
+        self.assertIn("inválido", txt)
+        self.assertTrue(app.notifier.send.call_args.kwargs.get("critical"))
+
+    def test_modo_desconhecido(self):
+        self._assert_interrompida(self._boot_with(mode="FORNO_MAGICO"))
+
+    def test_sem_curva(self):
+        self._assert_interrompida(self._boot_with(curve=_DEL))
+
+    def test_curva_sem_segmentos(self):
+        self._assert_interrompida(self._boot_with(curve={"name": "x"}))
+
+    def test_tipos_errados(self):
+        self._assert_interrompida(self._boot_with(saved_at="ontem", last_temp="quente"))
+
+
+_DEL = object()
+
+# Evita rodar duas vezes os testes de TestMainResume pela herança
+for _n in [n for n in dir(TestMainResume) if n.startswith("test_")]:
+    if _n not in TestEstadoMalformado.__dict__:
+        setattr(TestEstadoMalformado, _n, None)
+
+
 class TestValidadeRelogio(unittest.TestCase):
 
     class Dev:

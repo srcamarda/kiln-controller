@@ -13,6 +13,8 @@ Hardware necessário:
 
 Sem hardware detectado o programa **não inicia o controle** (fail-closed): se o MAX31855 não responder ou retornar leitura inválida, a tela mostra "Termopar ausente", os relés ficam desligados, é enviado um alerta no Telegram e a detecção é repetida a cada 5 s.
 
+Durante a operação, o termopar é lido a cada 0,5 s e filtrado pela mediana das últimas leituras. Saltos isolados são descartados; um valor novo que se mantém (ex.: reconexão) é aceito em ~3 s. Com ruído (ex.: interferência dos contatores), se as leituras variarem no máximo 60 °C entre si, vale a mediana delas; se variarem mais, ou se nenhuma leitura for aceita por 15 s, é falha do termopar — durante uma queima, ERRO com o motivo "leitura instável". A temperatura nunca fica parada no último valor sem acusar falha.
+
 Os simuladores só são usados quando pedidos explicitamente:
 
 - `SIM_TEMP=1` — termopar simulado
@@ -104,6 +106,8 @@ Durante uma queima o estado é gravado (a cada 60 s e a cada troca de segmento) 
 - a temperatura subiu mais de 30 °C com o controlador fora do ar (contator colado?).
 
 O tempo fora do ar vem do DS3231. Se a hora não for confiável — oscilador do DS3231 parado (bateria fraca: a data volta para 2000), sem leitura do RTC, ou hora atual mais de 5 min antes do último registro — o tempo fica **desconhecido** e a decisão passa a ser pela temperatura: retoma só se o forno esfriou no máximo 60 °C desde o último registro (indício de queda curta); caso contrário não retoma. Na retomada com hora desconhecida, o aviso no Telegram pede para conferir a bateria e rodar `sync_rtc.py`. O mesmo aviso aparece no log ao iniciar. Os registros das queimas são limpos pela data de modificação do arquivo, então uma queima nova com nome de 2000 não é apagada.
+
+Se o arquivo de estado estiver inválido (editado à mão, versão antiga do programa), a queima não é retomada: o estado é apagado, o controlador vai para ERRO "Queima interrompida" e o Telegram avisa — em vez de o serviço reiniciar em ciclo.
 
 Queima concluída, cancelada (encoder ou `/stop`) ou em ERRO apaga o estado. `systemctl stop`/reboot **não** apaga: a queima é retomada no próximo start. Para abandonar uma queima sem o encoder: `sudo rm /var/lib/kiln-controller/firing.json` com o serviço parado.
 
