@@ -25,7 +25,11 @@ for g in gpio spi i2c video; do
     getent group "$g" >/dev/null && usermod -aG "$g" "$USER_NAME" || true
 done
 
-chmod +x "$DIR/deploy/relays-off.sh"
+# O ExecStopPost roda como root: o script fica numa cópia de root, fora da
+# pasta do projeto (que o usuário do serviço pode alterar) — senão quem
+# controlasse o usuário pi viraria root no próximo "systemctl stop" (achado N4).
+RELAYS_OFF=/usr/local/sbin/kiln-relays-off
+install -o root -g root -m 0755 "$DIR/deploy/relays-off.sh" "$RELAYS_OFF"
 
 # Desligar os relés na saída depende de pinctrl ou raspi-gpio
 if ! command -v pinctrl >/dev/null 2>&1 && ! command -v raspi-gpio >/dev/null 2>&1; then
@@ -35,6 +39,7 @@ fi
 
 # Unidade do serviço
 sed -e "s|@USER@|$USER_NAME|g" -e "s|@DIR@|$DIR|g" -e "s|@PYTHON@|$PYTHON|g" \
+    -e "s|@RELAYS_OFF@|$RELAYS_OFF|g" \
     "$DIR/deploy/kiln-controller.service" > /etc/systemd/system/kiln-controller.service
 
 # Watchdog de hardware

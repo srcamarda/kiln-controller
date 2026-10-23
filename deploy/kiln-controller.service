@@ -1,5 +1,5 @@
 # Serviço do controlador do forno — instalado por deploy/install.sh
-# (@USER@ e @DIR@ são substituídos na instalação)
+# (@USER@, @DIR@, @PYTHON@ e @RELAYS_OFF@ são substituídos na instalação)
 
 [Unit]
 Description=Controlador do forno ceramico
@@ -34,7 +34,9 @@ RestartSec=3
 
 # Garante os relés DESLIGADOS sempre que o processo terminar, inclusive
 # se ele for morto pelo watchdog (sem chance de rodar o finally do Python).
-ExecStopPost=+@DIR@/deploy/relays-off.sh
+# Roda como root (+): usa a cópia de root instalada pelo install.sh, nunca o
+# arquivo da pasta do projeto, que o usuário do serviço pode alterar.
+ExecStopPost=+@RELAYS_OFF@
 
 [Install]
 WantedBy=multi-user.target
