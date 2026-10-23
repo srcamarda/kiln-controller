@@ -42,7 +42,8 @@ SAMPLE_INTERVAL_S    = 0.5    # uma leitura SPI a cada 0,5 s, não importa quem 
 MEDIAN_WINDOW        = 10     # amostras no filtro de mediana (≈ 5 s)
 MAX_PHYSICAL_JUMP    = 5.0    # °C — desvio da mediana considerado leitura espúria
 JUMP_RESET_COUNT     = 6      # rejeições seguidas (≈ 3 s) → aceita o novo patamar
-NOISE_WINDOW         = 6      # rejeições inconsistentes (≈ 3 s) avaliadas como ruído
+RAW_WINDOW           = 24     # últimas amostras válidas, aceitas ou não (≈ 12 s)
+NOISE_MIN_REJECTS    = 6      # rejeições na janela a partir das quais a leitura é "ruidosa"
 NOISE_MAX_SPREAD     = 60.0   # °C — amplitude máx. do ruído para usar a mediana dele
 FAULT_TOLERANCE_S    = 15.0   # s sem leitura válida até declarar falha (3 ciclos de controle)
 
@@ -133,7 +134,8 @@ class HardwareSensor:
         self._fail_reason  = ""
         self._reject_count = 0       # saltos rejeitados seguidos e consistentes
         self._reject_last  = None
-        self._rejected     = []      # amostras rejeitadas desde a última aceita
+        self._raw          = []      # últimas RAW_WINDOW amostras válidas (aceitas ou não)
+        self._raw_rej      = []      # ...e se cada uma foi rejeitada pelo filtro
         self._noisy        = False   # já avisou que a leitura está ruidosa
         self._clean        = 0       # amostras aceitas direto (sem ruído) seguidas
         self.last_raw      = None    # última leitura bruta válida (None se a última falhou)
@@ -216,49 +218,74 @@ class HardwareSensor:
         # rejeições seguidas por FAULT_TOLERANCE_S viram falha do termopar, em
         # vez de congelar a temperatura sem acusar nada (achado N1).
         if len(self._history) >= 3:
-            median = statistics.median(self._history)
-            if abs(temp - median) > MAX_PHYSICAL_JUMP:
+            median   = statistics.median(self._history)
+            rejected = abs(temp - median) > MAX_PHYSICAL_JUMP
+            # Janela das últimas amostras válidas, aceitas ou não (achado N3):
+            # com ruído largo, aceitar só as amostras perto da mediana prende
+            # o histórico numa das bordas do ruído (erro de até ±20 °C, falso
+            # "aquece desligado"). No modo ruidoso o valor usado é a mediana
+            # da janela inteira, sem viés.
+            self._raw.append(temp)
+            self._raw_rej.append(rejected)
+            del self._raw[:-RAW_WINDOW], self._raw_rej[:-RAW_WINDOW]
+
+            if rejected:
                 consistent = (self._reject_last is not None
                               and abs(temp - self._reject_last) <= MAX_PHYSICAL_JUMP)
                 self._reject_count = self._reject_count + 1 if consistent else 1
                 self._reject_last  = temp
-                self._rejected.append(temp)
-                del self._rejected[:-NOISE_WINDOW]
                 self._clean = 0
-                if self._reject_count >= JUMP_RESET_COUNT:
-                    # Valor novo e estável (ex.: reconexão): novo patamar
+                # Rejeições consistentes antes das quais a leitura estava limpa
+                prior_rej = sum(self._raw_rej[:-self._reject_count])
+                if (self._reject_count >= JUMP_RESET_COUNT
+                        and prior_rej < NOISE_MIN_REJECTS):
+                    # Valor novo e estável (ex.: reconexão): novo patamar,
+                    # semeado com as leituras consistentes (nunca com uma só).
+                    # Com ruído largo, seis leituras parecidas em sequência
+                    # acontecem por acaso — aí quem acompanha é a mediana da
+                    # janela (abaixo), não um patamar novo.
                     print(f"\r[sensor] Novo patamar aceito: {median:.1f} → {temp:.1f} °C")
-                    self._history = []
-                elif len(self._rejected) >= NOISE_WINDOW:
-                    # Rejeições inconsistentes: ruído (ex.: EMI dos contatores)?
-                    recent = self._rejected[-NOISE_WINDOW:]
-                    spread = max(recent) - min(recent)
-                    if spread > NOISE_MAX_SPREAD:
-                        self._fail_reason = (f"leitura instável (variação de {spread:.0f} °C "
-                                             f"entre leituras seguidas)")
-                        return
-                    # Ruído limitado: a mediana dele é a melhor estimativa
-                    temp = statistics.median(recent)
+                    self._history = self._raw[-JUMP_RESET_COUNT:-1]
+                    self._raw     = self._raw[-JUMP_RESET_COUNT:]
+                    self._raw_rej = [False] * len(self._raw)
+                    self._reject_count = 0
+                    self._reject_last  = None
+                    self._accept(temp, now)
+                    return
+            else:
+                self._reject_count = 0
+                self._reject_last  = None
+
+            if sum(self._raw_rej) >= NOISE_MIN_REJECTS:
+                spread = max(self._raw) - min(self._raw)
+                if spread <= NOISE_MAX_SPREAD:
+                    # Ruído limitado (ex.: EMI dos contatores): mediana da janela
                     if not self._noisy:
                         print(f"\r[sensor] Leitura ruidosa (±{spread / 2:.0f} °C) — "
                               f"usando a mediana das leituras.")
                         self._noisy = True
-                    if abs(temp - median) > MAX_PHYSICAL_JUMP:
-                        self._history = []      # temperatura real mudou: novo patamar
-                else:
-                    if not self._fail_reason.startswith("leitura instável"):
-                        self._fail_reason = "leitura instável (leituras rejeitadas pelo filtro)"
+                    self._clean = 0
+                    self._accept(statistics.median(self._raw), now)
                     return
-            elif self._noisy and not self._rejected:
+                if rejected:
+                    # Errático demais: nada é aceito; vira falha após FAULT_TOLERANCE_S
+                    self._fail_reason = (f"leitura instável (variação de {spread:.0f} °C "
+                                         f"entre leituras seguidas)")
+                    return
+            elif rejected:
+                if not self._fail_reason.startswith("leitura instável"):
+                    self._fail_reason = "leitura instável (leituras rejeitadas pelo filtro)"
+                return
+
+            if self._noisy:
                 self._clean += 1
                 if self._clean >= MEDIAN_WINDOW:
                     print("\r[sensor] Leitura estável de novo.")
                     self._noisy = False
-        self._reject_count = 0
-        self._reject_last  = None
-        self._rejected     = []
-        self._last_good    = now
+        self._accept(temp, now)
 
+    def _accept(self, temp, now):
+        self._last_good = now
         self._history.append(temp)
         if len(self._history) > MEDIAN_WINDOW:
             self._history.pop(0)

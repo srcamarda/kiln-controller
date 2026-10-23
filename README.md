@@ -13,7 +13,7 @@ Hardware necessário:
 
 Sem hardware detectado o programa **não inicia o controle** (fail-closed): se o MAX31855 não responder ou retornar leitura inválida, a tela mostra "Termopar ausente", os relés ficam desligados, é enviado um alerta no Telegram e a detecção é repetida a cada 5 s.
 
-Durante a operação, o termopar é lido a cada 0,5 s e filtrado pela mediana das últimas leituras. Saltos isolados são descartados; um valor novo que se mantém (ex.: reconexão) é aceito em ~3 s. Com ruído (ex.: interferência dos contatores), se as leituras variarem no máximo 60 °C entre si, vale a mediana delas; se variarem mais, ou se nenhuma leitura for aceita por 15 s, é falha do termopar — durante uma queima, ERRO com o motivo "leitura instável". A temperatura nunca fica parada no último valor sem acusar falha.
+Durante a operação, o termopar é lido a cada 0,5 s e filtrado pela mediana das últimas leituras. Saltos isolados são descartados; um valor novo que se mantém (ex.: reconexão) é aceito em ~3 s. Com ruído (ex.: interferência dos contatores) — muitas leituras rejeitadas nos últimos ~12 s —, se elas variarem no máximo 60 °C entre si, vale a mediana de todas as leituras desse intervalo, aceitas ou não (sem viés para uma das bordas do ruído); um valor novo só vira patamar se a leitura estava limpa antes; se variarem mais, ou se nenhuma leitura for aceita por 15 s, é falha do termopar — durante uma queima, ERRO com o motivo "leitura instável". A temperatura nunca fica parada no último valor sem acusar falha.
 
 Os simuladores só são usados quando pedidos explicitamente:
 

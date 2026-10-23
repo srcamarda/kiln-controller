@@ -185,6 +185,60 @@ class TestRuidoN1(Base):
         self.assertAlmostEqual(self.s.temperature, 505.0, delta=1.0)
 
 
+class TestRuidoLargoN3(Base):
+    """N3: com ruído largo (±20 °C aleatório, dentro do NOISE_MAX_SPREAD), o
+    filtro antigo aceitava só as amostras perto da mediana e o histórico ficava
+    preso numa das bordas do ruído; seis leituras parecidas por acaso viravam
+    "novo patamar" semeado com uma única amostra. Resultado: erro de até ±19 °C
+    e falso ERRO "aquece desligado" com o forno esfriando."""
+
+    def _ruido(self, seed, amp=20.0):
+        import random
+        rnd = random.Random(seed)
+        return lambda: rnd.uniform(-amp, amp)
+
+    def test_rampa_com_ruido_sem_vies(self):
+        for seed in range(3):
+            self.setUp()
+            noise = self._ruido(seed)
+            self.step(500.0, n=10)
+            errs = []
+            n = int(3600 / sensor.SAMPLE_INTERVAL_S)
+            for i in range(n):
+                real = 500.0 + 300.0 * (i + 1) / n
+                self.step(real + noise())
+                self.assertFalse(self.s.fault)
+                if i >= 120 and i % 10 == 0:
+                    errs.append(self.s.temperature - real)
+            worst = max(abs(e) for e in errs)
+            mean  = sum(abs(e) for e in errs) / len(errs)
+            self.assertLess(worst, 15.0, f"seed {seed}")   # antes: 17–19,5 °C
+            self.assertLess(mean, 4.5, f"seed {seed}")     # antes: ~6 °C
+
+    def test_esfriando_com_ruido_nao_acusa_aquece_desligado(self):
+        import controller
+        for seed in range(3):
+            self.setUp()
+            with mock.patch.object(controller, "time", self.clock):
+                k = controller.KilnController()
+                noise = self._ruido(seed)
+                self.step(900.0, n=10)
+                n = int(2 * 3600 / sensor.SAMPLE_INTERVAL_S)
+                for i in range(n):
+                    self.step(900.0 - 100.0 * (i + 1) / n + noise())
+                    if i % 10 == 0:
+                        st = k.update(self.s.temperature, self.s.fault)
+                        self.assertNotEqual(st.mode, controller.ControllerMode.ERROR,
+                                            f"seed {seed}, {i * 0.5 / 60:.0f} min: "
+                                            f"{st.error_message}")
+
+    def test_degrau_limpo_continua_rapido(self):
+        self.step(500.0, n=10)
+        self.step(700.0, n=sensor.JUMP_RESET_COUNT + 1)
+        self.assertFalse(self.s.fault)
+        self.assertAlmostEqual(self.s.temperature, 700.0, delta=0.1)
+
+
 class TestSemHistorico(unittest.TestCase):
 
     def test_sem_leitura_valida_e_fault(self):
