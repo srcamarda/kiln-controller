@@ -239,6 +239,7 @@ class KilnApp:
         except KeyboardInterrupt:
             pass
         finally:
+            self._ignore_signals()
             self._cleanup_hardware()
             print("\r\n[main] Encerrado.")
 
@@ -767,6 +768,8 @@ class KilnApp:
         if err:   # defesa extra: curvas já são validadas na carga e ao salvar
             self._show_message("CURVA INVÁLIDA", err, UIState.SELECTING)
             return
+        if self._sensor_blocks_start(UIState.SELECTING):
+            return
         temp = self.sensor.temperature
         try:
             self.controller.start_curve(curve, temp)
@@ -791,7 +794,24 @@ class KilnApp:
                            f"Temp. atual: {temp:.1f}°C"
                            + (f"\n{esc(skip_txt)}" if skip_txt else ""))
 
+    def _sensor_blocks_start(self, return_to) -> bool:
+        """
+        Termopar em falha: não inicia (achado N5). Antes a queima começava com
+        a última leitura boa (ou 0 °C) — pulando segmentos ou acusando "forno
+        quente" com um valor velho — e caía em ERRO SENSOR no ciclo seguinte,
+        com alerta crítico, healthchecks /fail e um log de queima vazio.
+        """
+        if not getattr(self.sensor, "fault", False):
+            return False
+        reason = getattr(self.sensor, "fault_reason", "") or "sem leitura válida"
+        self._show_message("TERMOPAR EM FALHA",
+                           f"Queima não iniciada: {reason}. Verifique o termopar.",
+                           return_to)
+        return True
+
     def _start_preheat(self):
+        if self._sensor_blocks_start(UIState.PREHEAT_SET):
+            return
         self.controller.start_preheat(self.preheat_target, self.sensor.temperature)
         self.hb.start(f"Pré-aquecimento a {self.preheat_target:.0f} °C")
         self.flog.start("preheat", f"preaquecimento {self.preheat_target:.0f}C", None,
@@ -1284,6 +1304,18 @@ class KilnApp:
         self.hb.finish("Queima parada remotamente (/stop)")
         self.ui = UIState.IDLE
         return "Os relés foram desligados e a queima foi interrompida."
+
+    def _ignore_signals(self):
+        """
+        Durante o encerramento um segundo Ctrl+C/SIGTERM levantaria outro
+        KeyboardInterrupt no meio do _cleanup_hardware — que só captura
+        Exception — e pularia as etapas seguintes (log, tela, relés) (achado N6).
+        """
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, signal.SIG_IGN)
+            except (ValueError, OSError):      # fora da thread principal (testes)
+                pass
 
     def _shutdown(self, *_):
         print("\r[main] Sinal de shutdown recebido.")
