@@ -46,6 +46,7 @@ RAW_WINDOW           = 24     # últimas amostras válidas, aceitas ou não (≈
 NOISE_MIN_REJECTS    = 6      # rejeições na janela a partir das quais a leitura é "ruidosa"
 NOISE_MAX_SPREAD     = 60.0   # °C — amplitude máx. do ruído para usar a mediana dele
 FAULT_TOLERANCE_S    = 15.0   # s sem leitura válida até declarar falha (3 ciclos de controle)
+FLATLINE_S           = 300.0  # s com leitura bruta idêntica e aquecimento ligado → "congelada"
 
 
 # ──────────────────────────────────────────────
@@ -139,9 +140,45 @@ class HardwareSensor:
         self._noisy        = False   # já avisou que a leitura está ruidosa
         self._clean        = 0       # amostras aceitas direto (sem ruído) seguidas
         self.last_raw      = None    # última leitura bruta válida (None se a última falhou)
+        # Leitura congelada (achado N7): valor bruto idêntico com aquecimento ligado
+        self._heating      = False
+        self._flat_value   = None
+        self._flat_since   = None    # monotonic: início da sequência idêntica com aquecimento
+        self._frozen       = False
 
     def update(self, bank_a: bool, bank_b: bool):
-        pass
+        """Recebe o estado dos relés a cada ciclo de controle. Usado só para
+        detectar leitura congelada: com aquecimento ligado a leitura bruta
+        nunca fica idêntica por FLATLINE_S."""
+        self._heating = bool(bank_a or bank_b)
+        if not self._heating:
+            self._flat_since = None
+        elif self._flat_since is None and self._flat_value is not None:
+            self._flat_since = time.monotonic()
+
+    def _check_flatline(self, temp, now):
+        """
+        Achado N7: um MAX31855 que devolve sempre a mesma palavra (CS preso,
+        chip travado) dá uma leitura plausível e "boa", sem acionar nenhuma
+        proteção. Parada um pouco abaixo do alvo do patamar, ela manteria os
+        dois bancos ligados até o fim do patamar (até SOAK_MAX); na rampa, só
+        o stall pegaria, após ~40 min. Com aquecimento ligado, o valor bruto
+        (resolução de 0,25 °C) sempre varia em poucos minutos.
+        """
+        if temp != self._flat_value:
+            if self._frozen:
+                print(f"\r[sensor] Leitura voltou a variar ({self._flat_value:.2f} → "
+                      f"{temp:.2f} °C).")
+            self._frozen     = False
+            self._flat_value = temp
+            self._flat_since = now if self._heating else None
+            return
+        if (not self._frozen and self._flat_since is not None
+                and now - self._flat_since >= FLATLINE_S):
+            self._frozen = True
+            self._fail_reason = (f"leitura congelada em {temp:.2f} °C há "
+                                 f"{FLATLINE_S / 60:.0f} min com aquecimento ligado")
+            print(f"\r[sensor] {self._fail_reason}")
 
     def probe(self, samples: int = PROBE_SAMPLES, interval: float = PROBE_INTERVAL_S):
         """
@@ -212,6 +249,7 @@ class HardwareSensor:
         if self._fail_count:
             print(f"\r[sensor] Leitura normalizada após {self._fail_count} falha(s).")
         self._fail_count = 0
+        self._check_flatline(temp, now)
 
         # Filtro anti-salto: rejeita desvios grandes da mediana. Uma amostra
         # só conta como "leitura boa" (_last_good) quando entra no histórico —
@@ -303,9 +341,10 @@ class HardwareSensor:
 
     @property
     def fault(self) -> bool:
-        """True se não houve leitura válida nos últimos FAULT_TOLERANCE_S."""
+        """True se não houve leitura válida nos últimos FAULT_TOLERANCE_S
+        ou se a leitura está congelada (N7)."""
         self.poll()
-        if self._last_good is None or not self._history:
+        if self._last_good is None or not self._history or self._frozen:
             return True
         return time.monotonic() - self._last_good > FAULT_TOLERANCE_S
 
