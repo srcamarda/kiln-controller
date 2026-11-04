@@ -1,3 +1,5 @@
+# kiln-controller
+
 Controladora feita para substituir a placa original (manual) de um forno cerâmico de alta temperatura.
 
 Hardware necessário:
@@ -8,6 +10,36 @@ Hardware necessário:
 - 1x Módulo DS3231 (RTC)
 - 1x Display LCD RPi
 - 1x Encoder Rotativo com clique
+
+## Uso
+
+![Telas do controlador](docs/telas/telas.png)
+
+*Telas do display (320×240), geradas com `python3 tools/render_screens.py`.*
+
+Tudo é feito com o encoder:
+
+| Ação | Efeito |
+|---|---|
+| Girar | Navega nos menus e ajusta valores |
+| Click | Confirma / avança |
+| Toque longo (≥ 0,5 s) | Volta ou cancela (sempre com confirmação quando há algo a perder) |
+
+Na tela inicial (hora e temperatura do forno), um click abre o menu:
+
+- **Curvas de Queima** — escolhe a curva (a lista mostra número de segmentos, temperatura final e duração estimada), confere os segmentos e confirma com click. Durante a rampa a tela mostra o segmento atual e o alvo dele, a temperatura, a taxa de subida medida e a programada, o tempo decorrido, o progresso da curva e quais bancos estão ligados; no patamar final, o tempo restante. Toque longo pede confirmação para cancelar. No fim aparecem a duração, a temperatura máxima e a hora de início. Se o forno já estiver quente (ex.: logo depois de um pré-aquecimento), os segmentos já atingidos são pulados.
+- **Pré-aquecimento** — mantém uma temperatura fixa de 100 a 600 °C (passos de 10 °C, só o banco A), útil para secar as peças. O alvo pode ser ajustado girando o encoder durante o aquecimento; toque longo para parar. Duração máxima: 24 h.
+- **Nova Curva** — monta uma curva segmento a segmento: taxa de subida (10–300 °C/h, passos de 10) e temperatura alvo (até 1270 °C, sempre crescente); depois de cada segmento, click adiciona outro e toque longo vai para o patamar final (1–240 min, passos de 5). A curva recebe o nome "Curva N"; nomes e exclusões são feitos editando o `curves.json` (ver [Curvas](#curvas)).
+- **Editar Curva** — percorre os segmentos de uma curva existente com os valores atuais já preenchidos.
+
+O que o controlador faz sozinho:
+
+- **Dois bancos de resistências**: abaixo de 600 °C só o banco A; acima, os dois. O banco B é cortado se o forno subir mais de 20% acima da taxa programada. Liga/desliga com histerese e tempo mínimo de 30 s entre comutações, para poupar os contatores.
+- **Segurança**: sobretemperatura, contator colado, resistência que não esquenta, segmento longo demais e falha do termopar desligam os relés e travam a tela em ERRO até alguém reconhecer com um click (ver [Limites de segurança](#limites-de-segurança-software)).
+- **Telegram** (opcional): avisa no início, de hora em hora, no fim e em qualquer erro; `/status` responde o estado atual e `/stop`, com senha, desliga o forno à distância (ver [Configuração do Telegram](#configuração-do-telegram)).
+- **Queda de energia**: ao religar, retoma a queima de onde parou, salvo sinais de problema (ver [Retomada da queima](#retomada-da-queima-após-reinício)).
+- **Aviso de queda**: com o [healthchecks.io](#aviso-de-queda-healthchecksio), você é avisado se o Pi parar de dar sinal durante uma queima.
+- **Registro**: cada queima gera um CSV e um resumo em JSON para análise posterior (ver [Registro das queimas](#registro-das-queimas)).
 
 ## Simulação e segurança
 
@@ -155,3 +187,4 @@ Ferramentas em `tools/`:
 - `check_thermocouple.py` — lê o MAX31855 em loop (Pi, bancada).
 - `check_encoder.py` — mostra os pulsos do encoder (Pi, bancada).
 - `show_screens.py` — percorre as telas do display (Pi; `python3 tools/show_screens.py [tela]`).
+- `render_screens.py` — gera `docs/telas/telas.png` com as telas do display, sem o Pi (PC; `--each` grava também uma imagem por tela).
