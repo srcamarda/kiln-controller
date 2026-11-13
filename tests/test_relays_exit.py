@@ -72,6 +72,7 @@ class TestOrdemNaSaida(unittest.TestCase):
         with open(log) as f:
             return [l.strip() for l in f if l.strip()]
 
+    @unittest.skipUnless(os.name == "posix", "pinctrl falso é um script de shell")
     def test_pinos_terminam_em_high_depois_do_gpiozero(self):
         log = self.run_script("""
             import relays
