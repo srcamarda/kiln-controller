@@ -369,12 +369,103 @@ class TestEstadoMalformado(TestMainResume):
         self._assert_interrompida(self._boot_with(saved_at="ontem", last_temp="quente"))
 
 
+class TestLimitesNaRetomada(TestEstadoMalformado):
+    """Revisão 13/11, M2: o estado salvo é revalidado com os limites atuais."""
+
+    def _boot_preheat(self, target):
+        a = self._app(150)
+        a.preheat_target = 200
+        a._start_preheat()
+        a._persist_firing(150, force=True)
+        snap = firing_state.load()
+        snap["preheat_target"] = target
+        firing_state.save(snap)
+        self.wall += 60
+        app = self._app(150)
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()), \
+             contextlib.redirect_stderr(io.StringIO()):
+            app._try_resume()
+        return app
+
+    def test_limite_reduzido_depois_da_gravacao(self):
+        """Estado gravado com TARGET_MAX maior; a versão atual aceita só até 1100 °C."""
+        import curves_manager
+        self._save_running(700)
+        self.wall += 60
+        app = self._app(690)
+        with mock.patch.object(curves_manager, "TARGET_MAX", 1100):
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                app._try_resume()
+        self._assert_interrompida(app)
+        self.assertIn("limites atuais", app.notifier.send.call_args.args[0])
+
+    def test_segmento_fora_dos_limites(self):
+        curve = dict(CURVE, segments=[{"rate_per_hour": 100, "target_temp": 600},
+                                      {"rate_per_hour": 150, "target_temp": 1400}])
+        self._assert_interrompida(self._boot_with(curve=curve))
+
+    def test_taxa_fora_dos_limites(self):
+        curve = dict(CURVE, segments=[{"rate_per_hour": 900, "target_temp": 600}])
+        self._assert_interrompida(self._boot_with(curve=curve))
+
+    def test_patamar_tambem_e_validado(self):
+        curve = dict(CURVE, segments=[{"rate_per_hour": 100, "target_temp": 1400}])
+        self._assert_interrompida(self._boot_with(mode="SOAKING", curve=curve))
+
+    def test_curva_valida_retoma(self):
+        app = self._boot_with()
+        self.assertEqual(app.ui, self.main.UIState.RUNNING)
+
+    def test_preaquecimento_valido_retoma(self):
+        app = self._boot_preheat(200)
+        self.assertEqual(app.ui, self.main.UIState.PREHEAT_RUN)
+        self.assertEqual(app.controller.state.mode, ControllerMode.PREHEAT)
+
+    def test_preaquecimento_fora_dos_limites(self):
+        self._assert_interrompida(self._boot_preheat(c.PREHEAT_MAX + 50))
+
+    def test_preaquecimento_alvo_invalido(self):
+        self._assert_interrompida(self._boot_preheat("200"))
+
+
+class TestRelogioVoltandoB2(TestMainResume):
+    """Revisão 13/11, B2: retomadas "no futuro" não contam como recentes."""
+
+    Y2000 = datetime(2000, 1, 1, 0, 5).timestamp()
+
+    def test_retomadas_no_futuro_nao_bloqueiam(self):
+        """Antes: RTC perdido (ano 2000) → as 3 retomadas reais de 2027 pareciam
+        'recentes' e a queima não era retomada."""
+        self._save_running(700, resume_times=[self.wall - 600, self.wall - 300,
+                                              self.wall - 60])
+        self.wall = self.Y2000
+        app = self._app(690)
+        app._try_resume()
+        self.assertEqual(app.ui, self.main.UIState.RUNNING)
+        self.assertEqual(firing_state.load()["resume_times"], [self.Y2000])
+
+    def test_reinicios_repetidos_com_relogio_errado_ainda_bloqueiam(self):
+        # Retomadas gravadas já com o relógio errado contam normalmente
+        self._save_running(700, resume_times=[self.Y2000 - 600, self.Y2000 - 300,
+                                              self.Y2000 - 60])
+        self.wall = self.Y2000
+        app = self._app(690)
+        app._try_resume()
+        self.assertEqual(app.controller.state.error_kind, ErrorKind.INTERRUPTED)
+        self.assertIn("reinícios", app.notifier.send.call_args.args[0])
+
+
 _DEL = object()
 
-# Evita rodar duas vezes os testes de TestMainResume pela herança
-for _n in [n for n in dir(TestMainResume) if n.startswith("test_")]:
-    if _n not in TestEstadoMalformado.__dict__:
-        setattr(TestEstadoMalformado, _n, None)
+# Evita rodar de novo, nas subclasses, os testes herdados pela herança
+for _cls in (TestEstadoMalformado, TestLimitesNaRetomada, TestRelogioVoltandoB2):
+    for _n in [n for n in dir(_cls) if n.startswith("test_")]:
+        if _n not in _cls.__dict__:
+            setattr(_cls, _n, None)
+del _cls, _n   # senão o unittest carrega a última classe de novo, pelo nome _cls
 
 
 class TestValidadeRelogio(unittest.TestCase):

@@ -1030,13 +1030,35 @@ class KilnApp:
         self.notifier.send(f"🚨 {b('Queima não retomada após reinício.')}\n{esc(msg)}\n"
                            f"Relés desligados. Verifique o forno.", critical=True)
 
+    def _check_saved_limits(self, snap):
+        """
+        O estado pode ter sido gravado por uma versão anterior com limites
+        diferentes (ex.: TARGET_MAX reduzido). Revalida com os limites atuais;
+        fora deles, levanta ValueError e _try_resume trata como estado
+        inválido (ERRO "Queima interrompida", relés desligados, aviso).
+        """
+        mode = snap.get("mode")
+        if mode in ("RAMPING", "SOAKING"):
+            err = validate_curve(snap.get("curve"))
+            if err:
+                raise ValueError(f"curva fora dos limites atuais: {err}")
+        elif mode == "PREHEAT":
+            target = snap.get("preheat_target")
+            if (isinstance(target, bool) or not isinstance(target, (int, float))
+                    or not PREHEAT_MIN <= target <= PREHEAT_MAX):
+                raise ValueError(f"alvo do pré-aquecimento fora de "
+                                 f"{PREHEAT_MIN}-{PREHEAT_MAX} °C: {target!r}")
+
     def _resume_from(self, snap):
+        self._check_saved_limits(snap)
         temp      = self.sensor.temperature
         now_wall  = self._wall_time()
         saved_at  = snap.get("saved_at")
         last_temp = snap.get("last_temp", temp)
+        # Só conta retomadas no passado recente: com o relógio voltando (RTC
+        # perdido → ano 2000), horários "no futuro" não podem bloquear (B2).
         recent    = [t for t in snap.get("resume_times", [])
-                     if now_wall - t < RESUME_WINDOW_S]
+                     if 0 <= now_wall - t < RESUME_WINDOW_S]
 
         # Tempo fora do ar só é confiável se o relógio estava e está certo e
         # não andou para trás. Senão (bateria do DS3231 fraca → ano 2000, Pi
