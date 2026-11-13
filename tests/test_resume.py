@@ -418,6 +418,7 @@ class TestValidadeRelogio(unittest.TestCase):
 
 class TestSdNotify(unittest.TestCase):
 
+    @unittest.skipUnless(os.name == "posix", "usa socket AF_UNIX")
     def test_envia_para_socket(self):
         import importlib
         d = tempfile.mkdtemp()

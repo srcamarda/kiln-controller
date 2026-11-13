@@ -27,6 +27,7 @@ import queue
 import threading
 import sys
 import os
+import traceback
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -222,7 +223,7 @@ class KilnApp:
 
                 # ── Leitura do encoder ─────────────────────────
                 for event in self.encoder.poll():
-                    self._handle_event(event)
+                    self._safe_handle_event(event)
 
                 # ── Ciclo de controle ──────────────────────────
                 if now - self._last_control >= 1.0 / LOOP_HZ:
@@ -561,6 +562,45 @@ class KilnApp:
     # ──────────────────────────────────────────────
     # Eventos do encoder
     # ──────────────────────────────────────────────
+
+    UI_ERR_REPEAT_S = 300   # repete no log o mesmo erro de interface no máx. a cada 5 min
+
+    def _safe_handle_event(self, event: EncoderEvent):
+        """
+        Trata um evento do encoder sem deixar exceções escaparem para o loop
+        principal: um erro de interface não pode encerrar o processo (cada
+        reinício conta em MAX_RESUMES e três numa hora abortam a queima).
+        Registra o erro uma vez (e de novo a cada UI_ERR_REPEAT_S) e volta
+        para a tela correspondente ao modo do controlador.
+        """
+        ui_before = self.ui
+        try:
+            self._handle_event(event)
+            return True
+        except Exception as e:
+            err = repr(e)
+            now = time.monotonic()
+            last = getattr(self, "_ui_err", None)
+            if (last is None or last[0] != err
+                    or now - last[1] >= self.UI_ERR_REPEAT_S):
+                print(f"\r[main] Erro na interface (controle segue): {err}\n"
+                      f"{traceback.format_exc()}")
+                self._ui_err = (err, now)
+            self.ui = self._screen_for_mode(ui_before)
+            return False
+
+    def _screen_for_mode(self, ui_before):
+        """Tela segura para o modo atual do controlador, após um erro de interface."""
+        mode = self.controller.state.mode
+        if mode == ControllerMode.PREHEAT:
+            return UIState.PREHEAT_RUN
+        if mode in (ControllerMode.RAMPING, ControllerMode.SOAKING):
+            return UIState.RUNNING
+        if mode == ControllerMode.ERROR:
+            # Não força ERROR aqui: a transição em _control_tick é quem
+            # desliga os relés e envia o alerta.
+            return ui_before
+        return UIState.IDLE
 
     def _handle_event(self, event: EncoderEvent):
         ui = self.ui
