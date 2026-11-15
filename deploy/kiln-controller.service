@@ -38,5 +38,14 @@ RestartSec=3
 # arquivo da pasta do projeto, que o usuário do serviço pode alterar.
 ExecStopPost=+@RELAYS_OFF@
 
+# Hardening (achado M3). O processo só grava em StateDirectory, LogsDirectory
+# e na pasta do projeto (curves.json). Não usar PrivateDevices: bloquearia
+# GPIO/SPI/I2C e o framebuffer (/dev/fb1).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=@DIR@
+
 [Install]
 WantedBy=multi-user.target

@@ -115,6 +115,10 @@ sudo sh deploy/install.sh
 
 O script instala `kiln-controller.service` (sobe no boot, sem depender de rede), ativa o watchdog de hardware do Pi e reinicia o serviço. Log: `journalctl -u kiln-controller -f`.
 
+O serviço roda como o usuário que chamou o `sudo`. Para escolher outro (ou rodando direto como root), passe o nome: `sudo sh deploy/install.sh NOME_DO_USUARIO`. O script recusa usuário inexistente e root.
+
+A unidade usa `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=full` e `ProtectHome=read-only`: o processo só grava no estado, nos registros e na pasta do projeto (`curves.json`). Não usa `PrivateDevices`, que bloquearia GPIO/SPI/I2C e o framebuffer.
+
 Camadas de proteção:
 
 - **Watchdog do serviço** (`WatchdogSec=30`): se o loop principal travar, o systemd mata e reinicia o processo.
