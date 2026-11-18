@@ -1,6 +1,7 @@
 #!/bin/sh
 # Instala o controlador do forno como serviço systemd.
-# Uso (no Pi, na pasta do projeto):  sudo sh deploy/install.sh
+# Uso (no Pi, na pasta do projeto):  sudo sh deploy/install.sh [usuario]
+# O serviço roda como [usuario]; sem ele, como quem chamou o sudo.
 set -e
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -9,7 +10,25 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-USER_NAME="${SUDO_USER:-pi}"
+USER_NAME="${1:-$SUDO_USER}"
+
+# Achado B5: sem SUDO_USER (rodando direto como root) o script usava "pi",
+# que não existe nas imagens recentes do Raspberry Pi OS, e o serviço não subia.
+if [ -z "$USER_NAME" ]; then
+    echo "Não sei com qual usuário rodar o serviço. Informe-o:" >&2
+    echo "  sh deploy/install.sh NOME_DO_USUARIO" >&2
+    exit 1
+fi
+if ! id "$USER_NAME" >/dev/null 2>&1; then
+    echo "Usuário '$USER_NAME' não existe. Informe um usuário válido:" >&2
+    echo "  sudo sh deploy/install.sh NOME_DO_USUARIO" >&2
+    exit 1
+fi
+if [ "$(id -u "$USER_NAME")" -eq 0 ]; then
+    echo "O serviço não deve rodar como root. Informe um usuário comum:" >&2
+    echo "  sudo sh deploy/install.sh NOME_DO_USUARIO" >&2
+    exit 1
+fi
 if [ -x "$DIR/kiln-env/bin/python" ]; then
     PYTHON="$DIR/kiln-env/bin/python"
 else
