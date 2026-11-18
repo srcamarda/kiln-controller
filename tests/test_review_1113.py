@@ -3,6 +3,8 @@ test_review_1113.py — Achado da revisão automática de 13/11/2026:
   M1 — exceção num handler da interface não pode derrubar o loop principal.
   M3 — unidade systemd com hardening, sem PrivateDevices.
   B5 — install.sh recusa usuário inexistente ou root, em vez de assumir "pi".
+  B1 — /stop sem loop no meio da gravação do estado não deixa o arquivo de volta.
+  B4 — mensagem de leitura congelada cita também o forno que não aquece.
 Rodar:  python3 -m unittest tests.test_review_1113 -v
 """
 
@@ -20,6 +22,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from controller import ControllerMode, ErrorKind
 from encoder import EncoderEvent
+import firing_state
+import sensor
 from tests.test_remote_commands import Base, CURVE
 
 
@@ -170,6 +174,39 @@ esac
         self.assertEqual(r.returncode, 1)
         self.assertIn("não deve rodar como root", r.stderr)
 
+
+class TestCorridaStopB1(Base):
+
+    def test_stop_durante_o_save_nao_deixa_o_arquivo(self):
+        self.app._start_curve()
+        real_save = firing_state.save
+
+        def save_e_stop(snap, *a, **k):
+            # A thread do Telegram roda o /stop sem loop depois do teste do
+            # evento em _persist_firing e antes de o arquivo ser gravado
+            self.app._stop_without_loop()
+            real_save(snap, *a, **k)
+
+        with redirect_stdout(io.StringIO()),                 mock.patch.object(firing_state, "save", side_effect=save_e_stop):
+            self.app._persist_firing(300.0, force=True)
+        self.assertIsNone(firing_state.load())
+
+    def test_sem_stop_o_estado_continua_gravado(self):
+        self.app._start_curve()
+        with redirect_stdout(io.StringIO()):
+            self.app._persist_firing(300.0, force=True)
+        self.assertIsNotNone(firing_state.load())
+
+
+class TestMensagemCongeladaB4(unittest.TestCase):
+
+    def test_mensagem_cita_forno_que_nao_aquece(self):
+        s = sensor.HardwareSensor(dev=object())
+        s._flat_value, s._flat_since, s._heating = 1215.0, 0.0, True
+        with redirect_stdout(io.StringIO()):
+            s._check_flatline(1215.0, sensor.FLATLINE_S + 1)
+        self.assertIn("congelada", s._fail_reason)
+        self.assertIn("forno não aquece", s._fail_reason)
 
 if __name__ == "__main__":
     unittest.main()

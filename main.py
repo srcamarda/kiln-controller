@@ -977,6 +977,13 @@ class KilnApp:
             self._last_save   = now
         except OSError as e:
             print(f"\r[main] Falha ao gravar estado da queima: {e}")
+            return
+        # Achado B1: o /stop sem loop (thread do Telegram) pode ter apagado o
+        # arquivo entre o teste do evento acima e o save — apaga de novo.
+        if ev is None:
+            ev = getattr(self, "_remote_stop", None)
+        if ev is not None and ev.is_set():
+            firing_state.clear()
 
     def _clear_firing(self):
         firing_state.clear()

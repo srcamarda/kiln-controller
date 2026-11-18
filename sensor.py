@@ -177,7 +177,9 @@ class HardwareSensor:
                 and now - self._flat_since >= FLATLINE_S):
             self._frozen = True
             self._fail_reason = (f"leitura congelada em {temp:.2f} °C há "
-                                 f"{FLATLINE_S / 60:.0f} min com aquecimento ligado")
+                                 f"{FLATLINE_S / 60:.0f} min com aquecimento ligado "
+                                 f"(termopar travado ou forno não aquece: disjuntor, "
+                                 f"contator)")
             print(f"\r[sensor] {self._fail_reason}")
 
     def probe(self, samples: int = PROBE_SAMPLES, interval: float = PROBE_INTERVAL_S):
