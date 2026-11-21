@@ -183,6 +183,13 @@ python3 -m unittest                          # todos
 python3 -m unittest tests.test_curves -v     # um arquivo
 ```
 
+No Windows (PowerShell), defina antes `$env:PYTHONIOENCODING="utf-8"`. Sem isso, com
+a saída redirecionada, os `print` com `→`, `°` e emojis falham em cp1252 (achado M4 da
+[revisão de 20/11/2026](docs/revisao-2026-11-20.md)).
+
+Revisões de código: [docs/revisao-2026-11-13.md](docs/revisao-2026-11-13.md) (concluída)
+e [docs/revisao-2026-11-20.md](docs/revisao-2026-11-20.md) (pendente).
+
 Ferramentas em `tools/`:
 
 - `plot_firing.py` — resumo e gráfico de uma queima registrada (PC).
